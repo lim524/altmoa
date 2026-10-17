@@ -75,7 +75,7 @@ begin
  foreach t in array new.tags loop
   if t is null or t !~ '^[a-zA-Z0-9가-힣_]{1,20}$' then raise exception '태그 형식을 확인하세요.'; end if;
  end loop;
- select array_agg(distinct upper(x) order by upper(x)) into new.tags from unnest(new.tags) x;
+ new.tags := array(select distinct upper(x) from unnest(new.tags) x order by upper(x));
  new.coin=case when new.tags[1] ~ '^[A-Z0-9]{1,20}$' then new.tags[1] else null end;
  if cardinality(new.images)>3 then raise exception '사진은 최대 3장입니다.'; end if;
  foreach p in array new.images loop
