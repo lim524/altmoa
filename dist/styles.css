@@ -35,3 +35,4 @@
 .member-link{color:inherit;text-decoration:none}.member-link:hover{text-decoration:underline;color:var(--accent)}.member-link:focus-visible{outline:2px solid var(--accent);outline-offset:3px}.privacy-setting{border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:18px}.privacy-setting .solid{font-size:12px}.privacy-setting p{line-height:1.7}.activity-item span{min-width:0}.activity-item small{overflow-wrap:anywhere}
 
 .operator-badge{display:inline-flex;align-items:center;gap:3px;background:#edf2ff;color:#315bec;border:1px solid #d8e2ff;border-radius:4px;padding:2px 5px;font-size:10px;line-height:1.2;vertical-align:middle}.dark .operator-badge{color:#b9caff;background:#243a61;border-color:#385281}
+.summary-coin>strong{white-space:nowrap}.summary-coin>strong>small{display:block;margin-top:4px;font-size:11px;font-weight:600}

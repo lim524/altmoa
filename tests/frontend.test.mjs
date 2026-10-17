@@ -149,7 +149,7 @@ test('late post responses cannot replace a newer page or reopen a dialog',async(
 
 test('comment and report in-flight guards reject repeated submissions',async()=>{
  const id='00000000-0000-0000-0000-000000000001';let writes=0,complete;
- const f=fixture(async(url,options)=>{if(options.method==='POST'){writes++;return new Promise(resolve=>complete=resolve);}return Response.json(new URL(url).searchParams.get('select')?.startsWith('*')?[{id,title:'댓글 검사',body:'본문',category:'자유',author_id:'other'}]:[])});configure(f);await f.run(`openPost('${id}')`);
+ const f=fixture(async(url,options)=>{if(String(url).includes('/api/post-view'))return Response.json({view_count:1,ai_view_count:0});if(options.method==='POST'){writes++;return new Promise(resolve=>complete=resolve);}return Response.json(new URL(url).searchParams.get('select')?.startsWith('*')?[{id,title:'댓글 검사',body:'본문',category:'자유',author_id:'other'}]:[])});configure(f);await f.run(`openPost('${id}')`);
  const submit=f.node('commentform').onsubmit,event={preventDefault(){},target:{body:'반복 댓글'}};const first=submit(event);await new Promise(r=>setImmediate(r));await submit(event);assert.equal(writes,1);complete(new Response(null,{status:201}));await first;
  f.run(`reportItem('posts','${id}')`);const report=f.node('reportform').onsubmit,reportEvent={preventDefault(){},target:{reason:'반복 신고 검사'}};const next=report(reportEvent);await new Promise(r=>setImmediate(r));await report(reportEvent);assert.equal(writes,2);complete(new Response(null,{status:201}));await next;
 });

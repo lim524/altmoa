@@ -30,7 +30,7 @@ test('external candidates never trigger a crawl and remain disconnected without 
  finally{globalThis.fetch=original;clear()}
 });
 test('internal attention uses visible posts only and never shares body/author data',async()=>{
- const original=globalThis.fetch;let called='';config();globalThis.fetch=async url=>{called=String(url);return Response.json([{id:'a',title:'SUI',coin:'SUI',created_at:new Date().toISOString()}])};
+ const original=globalThis.fetch;let called='';config();globalThis.fetch=async url=>{if(String(url).includes('rest/v1/posts'))called=String(url);return Response.json([{id:'a',title:'SUI',coin:'SUI',created_at:new Date().toISOString()}])};
  try{const r=await getAttention(new URL('https://example.com/api/attention?scope=internal&hours=1'));assert.equal(r.status,'ready');assert.equal(r.items[0].symbol,'SUI');assert.equal(r.items[0].mentions,1);assert.match(called,/status=eq.published/);assert.doesNotMatch(called,/author_id|body/);assert.equal(r.sources[0].id,'altmoa')}
  finally{globalThis.fetch=original;clear()}
 });
@@ -40,5 +40,5 @@ test('missing migration is reported without fabricated external rankings',async(
 });
 test('legacy scope and region parameters always resolve to internal unified posts',async()=>{
  const original=globalThis.fetch;config();const calls=[];globalThis.fetch=async url=>{calls.push(String(url));return Response.json([{id:'a',title:'태그 테스트',tags:['BTC','USDT'],created_at:new Date().toISOString()}]);};
- try{const r=await getAttention(new URL('https://example.com/api/attention?scope=external&region=global'));assert.equal(r.scope,'internal');assert.equal(r.region,undefined);assert.deepEqual(r.items.map(i=>i.symbol),['BTC','USDT']);assert.equal(calls.length,1);assert.match(calls[0],/rest\/v1\/posts/);assert.doesNotMatch(calls[0],/attention_sources|rpc/);}finally{globalThis.fetch=original;clear();}
+ try{const r=await getAttention(new URL('https://example.com/api/attention?scope=external&region=global'));assert.equal(r.scope,'internal');assert.equal(r.region,undefined);assert.deepEqual(r.items.map(i=>i.symbol),['BTC','USDT']);assert.equal(calls.filter(u=>u.includes('rest/v1/')).length,1);assert.match(calls[0],/rest\/v1\/posts/);assert.doesNotMatch(calls[0],/attention_sources|rpc/);}finally{globalThis.fetch=original;clear();}
 });
