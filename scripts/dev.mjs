@@ -1,15 +1,17 @@
 import http from 'node:http';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { GET } from '../api/index.mjs';
+import { GET, POST } from '../api/index.mjs';
 try { process.loadEnvFile('.env.local'); } catch {}
 const root = path.resolve('dist');
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, 'http://localhost:3000');
     if (url.pathname.startsWith('/api/')) {
-      if (req.method !== 'GET') { res.writeHead(405); return res.end(); }
-      const response = await GET(new Request(url));
+      if (!['GET','POST'].includes(req.method)) { res.writeHead(405); return res.end(); }
+      let body;
+      if(req.method==='POST'){const chunks=[];let size=0;for await(const chunk of req){size+=chunk.length;if(size>12000){res.writeHead(413);return res.end('Request too large');}chunks.push(chunk);}body=Buffer.concat(chunks);}
+      const response = await (req.method==='POST'?POST:GET)(new Request(url,{method:req.method,headers:req.headers,...(body?{body}:{})}));
       res.writeHead(response.status, Object.fromEntries(response.headers));
       return res.end(Buffer.from(await response.arrayBuffer()));
     }

@@ -1,0 +1,42 @@
+'use strict';
+let activityTab='posts',activityPage=0,activityRequest=0,badgeRetryAt=0;
+const activityMembers=new Map(),badgePending=new Set();
+const MEMBER_LEVELS=[{min:0,icon:'🌱',name:'새싹'},{min:20,icon:'🌿',name:'참여자'},{min:100,icon:'⭐',name:'단골'},{min:300,icon:'💎',name:'고수'},{min:1000,icon:'👑',name:'레전드'}];
+function memberLevel(posts,comments){const score=Math.max(0,Number(posts)||0)*5+Math.max(0,Number(comments)||0);return {...[...MEMBER_LEVELS].reverse().find(level=>score>=level.min),score};}
+function badgeHTML(member){if(member.is_ai)return '<span class="member-level ai-label" title="AI 계정">AI</span>';const level=memberLevel(member.post_count,member.comment_count);return '<span class="member-level" title="'+level.name+' · 글 '+Number(member.post_count)+'개 / 댓글 '+Number(member.comment_count)+'개">'+level.icon+' '+level.name+'</span>';}
+function memberBadge(id){return /^[a-f0-9-]{36}$/i.test(id||'')?'<span data-member-id="'+id+'">'+(activityMembers.has(id)?badgeHTML(activityMembers.get(id)):'')+'</span>':'';}
+async function loadMemberBadges(ids){
+ const unique=[...new Set(ids)].filter(id=>/^[a-f0-9-]{36}$/i.test(id||'')&&!badgePending.has(id));if(!unique.length||Date.now()<badgeRetryAt||!config?.communityReady)return;
+ unique.forEach(id=>badgePending.add(id));
+ try{const {data}=await db('member_activity?'+new URLSearchParams({select:'id,nickname,is_ai,post_count,comment_count',id:'in.('+unique.join(',')+')'}));data.forEach(member=>activityMembers.set(member.id,member));document.querySelectorAll('[data-member-id]').forEach(node=>{const member=activityMembers.get(node.dataset.memberId);if(member)node.innerHTML=badgeHTML(member);});}catch{badgeRetryAt=Date.now()+60000;}finally{unique.forEach(id=>badgePending.delete(id));}
+}
+function openMyActivity(tab='posts'){$('dialog').close();activityTab=tab==='comments'?'comments':'posts';activityPage=0;navigate('activity');}
+function showAccount(){
+ modal('<div class="eyebrow">MY ALTMOA</div><h2>내 계정</h2><p>'+escapeHTML(session.user.email)+'</p><div class="account-links"><button class="solid" onclick="openMyActivity(\'posts\')">내 글 보기</button><button class="solid" onclick="openMyActivity(\'comments\')">내 댓글 보기</button></div><p class="subtle">작성한 글·댓글과 활동 등급을 확인할 수 있어요.</p><button onclick="signOut()">로그아웃</button>'+(moderator?' <button onclick="showReports()">신고 관리</button> <button onclick="showAIStudio()">AI 캐릭터 관리</button>':''));
+}
+async function loadMyActivity(){
+ const token=++activityRequest;
+ document.querySelectorAll('[data-history]').forEach(button=>{button.classList.toggle('on',button.dataset.history===activityTab);button.onclick=()=>{activityTab=button.dataset.history;activityPage=0;loadMyActivity();};});
+ if(!session?.user||!config?.communityReady){$('activitystats').innerHTML='';$('activityitems').innerHTML='<div class="connection"><b>로그인 후 내 활동을 확인할 수 있어요.</b><button onclick="authModal()">로그인 →</button></div>';$('activitypagination').innerHTML='';return;}
+ const id=session.user.id;$('activityitems').innerHTML='<p class="loading">내 활동을 불러오는 중입니다.</p>';
+ try{
+ const queries=['posts','comments'].map(table=>{const params=new URLSearchParams({select:table==='posts'?'id,title,category,created_at':'id,body,post_id,created_at,posts!inner(title,category,status)',author_id:'eq.'+id,status:'eq.published',order:'created_at.desc,id.desc',limit:table===activityTab?'10':'1',offset:table===activityTab?String(activityPage*10):'0'});if(table==='comments')params.set('posts.status','eq.published');return db(table+'?'+params,{headers:{Prefer:'count=exact'}});});
+ const [postsResult,commentsResult]=await Promise.all(queries);if(token!==activityRequest||session?.user?.id!==id)return;
+ const count=result=>{const n=Number(result.response.headers.get('content-range')?.split('/')[1]);return Number.isFinite(n)?n:result.data.length;};const postCount=count(postsResult),commentCount=count(commentsResult),level=memberLevel(postCount,commentCount);
+ $('activitystats').innerHTML='<div><small>작성한 글</small><b>'+postCount+'</b></div><div><small>작성한 댓글</small><b>'+commentCount+'</b></div><div><small>활동 등급</small><b>'+level.icon+' '+level.name+'</b></div><p>공개 글 1개 = 5점 · 공개 댓글 1개 = 1점 · 현재 '+level.score+'점</p>';
+ const result=activityTab==='posts'?postsResult:commentsResult,total=activityTab==='posts'?postCount:commentCount;
+ if(activityPage>0&&activityPage*10>=total){activityPage=Math.max(0,Math.ceil(total/10)-1);return loadMyActivity();}
+ $('activityitems').innerHTML=result.data.map(item=>'<button class="activity-item" onclick="openPost(\''+(activityTab==='posts'?item.id:item.post_id)+'\')"><span class="tag">'+escapeHTML(activityTab==='posts'?item.category:item.posts?.category||'댓글')+'</span><span><b>'+escapeHTML(activityTab==='posts'?item.title:item.body)+'</b>'+(activityTab==='comments'?'<small>원글: '+escapeHTML(item.posts?.title||'게시글')+'</small>':'')+'<small>'+time(item.created_at)+'</small></span><span>→</span></button>').join('')||'<p class="empty">아직 작성한 '+(activityTab==='posts'?'글':'댓글')+'이 없어요.</p>';
+ $('activitypagination').innerHTML=(activityPage>0?'<button onclick="activityPage--;loadMyActivity()">← 이전</button>':'')+'<span>'+(activityPage+1)+' / '+Math.max(1,Math.ceil(total/10))+'</span>'+(activityPage*10+10<total?'<button onclick="activityPage++;loadMyActivity()">다음 →</button>':'');
+ }catch(error){if(token===activityRequest){$('activityitems').innerHTML='<div class="connection">내 활동을 불러오지 못했어요.<button onclick="loadMyActivity()">다시 시도 →</button></div>';$('activitystats').innerHTML='';$('activitypagination').innerHTML='';}}
+}
+async function showAIStudio(){
+ if(!moderator)return;
+ modal('<h2>AI 캐릭터 관리</h2><p class="subtle">설정을 불러오는 중입니다.</p>');
+ try{const {data}=await fetchJSON('/api/ai');if(!moderator)return;
+ modal('<div class="eyebrow">AI DRAFT STUDIO</div><h2>AI 캐릭터 10명</h2><p class="subtle">AI 표시가 붙은 운영자 검토용 초안입니다. 자동 게시·계좌 연결은 하지 않습니다.</p><div class="ai-character-list">'+data.characters.map(character=>'<div><b>'+character.icon+' AI · '+escapeHTML(character.name)+'</b><small>'+escapeHTML(character.role)+' · '+escapeHTML(character.style)+'</small></div>').join('')+'</div><form id="aiform"><label>캐릭터<select name="character">'+data.characters.map(character=>'<option value="'+character.id+'">AI · '+escapeHTML(character.name)+'</option>').join('')+'</select></label><label>거래소<select name="exchange">'+exchangeOptions.map(exchange=>'<option value="'+exchange[0]+'">'+exchange[1]+'</option>').join('')+'</select></label><label>코인 기호 (비우면 거래대금 상위 5개)<input name="symbol" maxlength="20" placeholder="SUI"></label><label>글 주제 또는 답글을 달 내용<textarea name="topic" minlength="2" maxlength="800" required placeholder="예: 최근 수이 변동을 차분하게 설명해줘"></textarea></label><p class="subtle">'+(data.enabled?'Grok 연결 준비됨 · 웹 검색 '+(data.webSearch?'켜짐':'꺼짐'):'Grok API 환경변수 연결 후 생성할 수 있습니다.')+'</p><button class="solid" id="aigenerate"'+(data.enabled?'':' disabled')+'>초안 생성</button><p id="aierror" class="subtle" role="alert"></p></form><div id="aidraft"></div>');
+ $('aiform').onsubmit=async event=>{event.preventDefault();const button=$('aigenerate');button.disabled=true;$('aierror').textContent='최신 시세를 조회하고 초안을 생성하고 있어요.';
+ try{const form=new FormData(event.target),token=await freshToken();const {data}=await fetchJSON('/api/ai',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},signal:AbortSignal.timeout(30000),body:JSON.stringify({character:form.get('character'),exchange:form.get('exchange'),symbol:form.get('symbol').trim().toUpperCase(),topic:form.get('topic')})});if(!$('aidraft'))return;$('aierror').textContent='초안 생성 완료 · 게시하지 않았습니다.';$('aidraft').innerHTML='<h3>운영자 검토용 초안</h3><div class="postbody">'+escapeHTML(data.text)+'</div><p class="subtle">시세 조회: '+escapeHTML(data.snapshot.exchange)+' · '+time(data.snapshot.fetchedAt)+' KST</p>'+data.sources.map(source=>'<p><a href="'+escapeHTML(source.url)+'" target="_blank" rel="noopener noreferrer">'+escapeHTML(source.title)+'</a></p>').join('');}
+ catch(error){if($('aierror'))$('aierror').textContent=errorMessage(error);}finally{if(button.isConnected)button.disabled=false;}};
+ }catch(error){info('AI 설정을 불러오지 못했어요',errorMessage(error));}
+}

@@ -15,5 +15,12 @@ test('Bithumb batches markets and rejects partial or HTML responses',async()=>{
 test('comparison preserves available exchanges when a source fails and labels USDT conversion',async()=>{
  const original=globalThis.fetch;
  globalThis.fetch=async url=>{url=String(url);if(url.includes('bithumb'))throw new Error('offline');if(url.includes('exchangeInfo'))return Response.json({symbols:[pair('SUI')]});if(url.includes('binance.vision'))return Response.json([tick('SUI')]);if(url.includes('/market/all'))return Response.json([{market:'KRW-SUI'},{market:'KRW-USDT'}]);return Response.json([{market:'KRW-SUI',trade_price:3000,signed_change_rate:0,acc_trade_price_24h:100},{market:'KRW-USDT',trade_price:1400,signed_change_rate:0,acc_trade_price_24h:100}]);};
- try{assert.equal(await compareAsset('unknown'),null);const result=await compareAsset('sui');assert.deepEqual(result.comparisons.map(c=>c.status),['ready','unavailable','ready']);assert.equal(result.comparisons[2].convertedKrw,2800);assert.equal(result.conversion.source,'업비트 USDT/KRW');}finally{globalThis.fetch=original;}
+ try{assert.equal(await compareAsset('unknown'),null);const result=await compareAsset('sui');assert.deepEqual(result.comparisons.map(c=>c.status),['ready','unavailable','ready','unavailable','unavailable']);assert.equal(result.comparisons[2].convertedKrw,2800);assert.equal(result.conversion.source,'업비트 USDT/KRW');}finally{globalThis.fetch=original;}
+});
+
+test('Bitget and OKX normalize only online USDT spot pairs and use quote turnover',async()=>{
+ const {normalizeInternational,fetchConversion}=await import('../lib/exchanges.mjs');
+ const b=normalizeInternational({code:'00000',data:[{symbol:'SUIUSDT',lastPr:'2',open:'4',quoteVolume:'99',ts:'1700000000000'},{symbol:'OFFUSDT',lastPr:'1',open:'1',quoteVolume:'1'}]},{code:'00000',data:[{symbol:'SUIUSDT',baseCoin:'SUI',quoteCoin:'USDT',status:'online'},{symbol:'OFFUSDT',baseCoin:'OFF',quoteCoin:'USDT',status:'offline'}]},'bitget');assert.equal(b.length,1);assert.equal(b[0].change,-50);assert.equal(b[0].volume24h,99);assert.equal(b[0].assetId,'sui');
+ const o=normalizeInternational({code:'0',data:[{instId:'SUI-USDT',last:'2',open24h:'1',volCcy24h:'100',vol24h:'999',ts:'1700000000000'}]},{code:'0',data:[{instId:'SUI-USDT',baseCcy:'SUI',quoteCcy:'USDT',state:'live',instType:'SPOT'}]},'okx');assert.equal(o[0].change,100);assert.equal(o[0].volume24h,100);
+ const original=globalThis.fetch;try{globalThis.fetch=async()=>Response.json([{market:'KRW-USDT',trade_price:1400}]);assert.equal((await fetchConversion()).rate,1400);globalThis.fetch=async()=>Response.json([{market:'KRW-USDT',trade_price:0}]);await assert.rejects(fetchConversion(),/invalid_conversion/);}finally{globalThis.fetch=original;}
 });

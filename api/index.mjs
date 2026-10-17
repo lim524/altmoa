@@ -1,4 +1,5 @@
-import { EXCHANGES,fetchExchange,compareAsset } from '../lib/exchanges.mjs';
+import { EXCHANGES,fetchExchange,compareAsset,fetchConversion } from '../lib/exchanges.mjs';
+import {aiConfiguration,createAIDraft} from '../lib/ai-drafts.mjs';
 import { getAttention } from '../lib/attention-api.mjs';
 const json = (body, status = 200, cache = 'no-store') => Response.json(body, { status, headers: { 'Cache-Control': cache, 'X-Content-Type-Options': 'nosniff' } });
 export async function GET(request) {
@@ -15,7 +16,9 @@ export async function GET(request) {
     // Only a validated public anon/publishable key is sent to clients.
     return json({ communityReady: ready, supabaseUrl: ready ? url : '', supabaseKey: ready ? key : '' });
   }
+  if(route==='ai')return json(aiConfiguration());
   if (route === 'attention') return json(await getAttention(u));
+  if(route==='conversion'){try{return json(await fetchConversion(),200,'public, max-age=0, s-maxage=30, stale-while-revalidate=60');}catch{return json({error:'USDT/KRW 환산 시세 연결 지연'},502);}}
   if (route !== 'market') return json({ error: 'Not found' }, 404);
   const asset=u.searchParams.get('asset');
   if(asset){
@@ -31,3 +34,5 @@ export async function GET(request) {
     return json({ exchange, source:EXCHANGES[exchange].source, error:EXCHANGES[exchange].name+' 시세를 불러오지 못했습니다. 다른 거래소를 선택하거나 잠시 후 다시 시도해 주세요.' }, 502);
   }
 }
+
+export async function POST(request){const url=new URL(request.url),route=url.searchParams.get('route')||url.pathname.replace(/^\/api\/?/,'');if(route==='ai')return createAIDraft(request);return json({error:'Not found'},404);}

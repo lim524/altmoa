@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import fs from 'node:fs';
+const activityCode=fs.readFileSync(new URL('../dist/activity.js',import.meta.url),'utf8');
 const communityCode=fs.readFileSync(new URL('../dist/community.js',import.meta.url),'utf8');
 const code = fs.readFileSync(new URL('../dist/app.js',import.meta.url),'utf8').replace(/init\(\);\s*$/, '');
 function fixture(handler) {
@@ -9,8 +10,8 @@ function fixture(handler) {
   const storage = { getItem:k=>data.get(k)||null, setItem:(k,v)=>data.set(k,v) };
   const element = id => { if (!nodes.has(id)) nodes.set(id,{id,textContent:'',innerHTML:'',value:'',style:{},isConnected:true,disabled:false,classList:{toggle(){},contains(){return false},add(){}},addEventListener(){},showModal(){this.open=true},close(){this.open=false},scrollIntoView(){},setAttribute(){},insertAdjacentHTML(_,html){this.innerHTML+=html}});return nodes.get(id); };
   const views=[['homepage','home'],['boardpanel','board'],['marketpanel','market'],['rankpanel','rank']].map(([id,view])=>Object.assign(element(id),{dataset:{view},hidden:view!=='home'}));
-  const context = vm.createContext({ document:{getElementById:element,querySelectorAll:selector=>selector==='[data-view]'?views:[],addEventListener(){},body:{classList:{toggle(){},contains(){return false},add(){}}}}, window:{scrollTo(){}}, localStorage:storage,sessionStorage:storage,setTimeout:()=>1,clearTimeout(){},setInterval(){},URLSearchParams,AbortSignal,location:{origin:'https://altmoa.example',pathname:'/',search:'',hash:''},history:{replaceState(){},pushState(state,title,path){this.lastPath=path}},fetch:handler,FormData:class{constructor(fields){this.fields=fields}get(k){return this.fields[k]}} });
-  vm.runInContext(communityCode+'\n'+code,context);
+  const context = vm.createContext({ document:{getElementById:element,querySelectorAll:selector=>selector==='[data-view]'?views:[],addEventListener(){},body:{classList:{toggle(){},contains(){return false},add(){}}}}, window:{scrollTo(){}}, localStorage:storage,sessionStorage:storage,setTimeout:()=>1,clearTimeout(){},setInterval(){},URLSearchParams,AbortSignal,location:{origin:'https://altmoa.example',pathname:'/',search:'',hash:''},history:{replaceState(){},pushState(state,title,path){this.lastPath=path}},fetch:(url,options)=>String(url)==='/api/conversion'?Promise.resolve(Response.json({rate:1400,source:'업비트 USDT/KRW',fetchedAt:new Date().toISOString()})):handler(url,options),FormData:class{constructor(fields){this.fields=fields}get(k){return this.fields[k]}} });
+  vm.runInContext(activityCode+'\n'+communityCode+'\n'+code,context);
   return { run:source=>vm.runInContext(source,context),node:element,data };
 }
 const market = { id:'upbit',name:'업비트',source:'Upbit',currency:'KRW', fetchedAt:'2026-10-17T08:00:00Z',coins:[{symbol:'SUI',market:'KRW-SUI',exchange:'upbit',quote:'KRW',name:'수이',price:100,change:-2,volume24h:1000000000}] };
@@ -85,4 +86,15 @@ test('spot market pagination reaches every coin and clamps after refreshed or fi
  f.run('goMarketPage(2)');assert.equal((f.node('coins').innerHTML.match(/<tr>/g)||[]).length,2);assert.match(f.node('marketpagination').innerHTML,/11–12 \/ 총 12개/);
  rows=rows.slice(0,7);await f.run("loadMarket('upbit')");assert.equal(f.run('marketPage'),1);assert.match(f.node('marketpagination').innerHTML,/6–7 \/ 총 7개/);
  f.run("query='검사코인0';renderCoins()");assert.equal(f.run('marketPage'),0);assert.match(f.node('marketpagination').innerHTML,/1–1 \/ 총 1개/);f.run("query='없는코인';renderCoins()");assert.equal(f.node('marketpagination').innerHTML,'');
+});
+
+test('currency conversion changes both displayed prices and turnover without mutating source quotes',async()=>{
+ const f=fixture(async()=>Response.json(market));await f.run("loadMarket('upbit')");assert.equal(f.run("marketValue(coins[0],'price')"),100/1400);assert.match(f.node('coins').innerHTML,/0.07142857 USDT/);await f.run('toggleMarketCurrency()');assert.match(f.node('coins').innerHTML,/₩100/);assert.equal(f.run('coins[0].price'),100);assert.equal(f.run('displayCurrency'),'KRW');assert.equal(f.data.get('altmoa-display-currency'),'"KRW"');
+ f.run("displayCurrency='USDT';conversion=null;renderCoins()");assert.match(f.node('coins').innerHTML,/<td>—<\/td>/);assert.match(f.node('marketfxnote').textContent,/확인할 수 없어/);
+});
+test('sorting toggles volume and signed price change in both directions',()=>{
+ const f=fixture(async()=>Response.json({}));f.run("coins=[{symbol:'A',name:'A',price:1,change:-3,volume24h:100},{symbol:'B',name:'B',price:1,change:5,volume24h:2}];setMarketSort('volume')");assert.equal(f.run('sortDirection'),'asc');assert.ok(f.node('coins').innerHTML.indexOf('>B<')<f.node('coins').innerHTML.indexOf('>A<'));f.run("setMarketSort('change');setMarketSort('change')");assert.equal(f.run('sortDirection'),'asc');assert.ok(f.node('coins').innerHTML.indexOf('>A<')<f.node('coins').innerHTML.indexOf('>B<'));
+});
+test('my activity queries only the signed-in author and computes grade from exact counts',async()=>{
+ const urls=[];const f=fixture(async url=>{urls.push(new URL(url));const comment=String(url).includes('/comments?');return Response.json(comment?[{id:'c',body:'내 댓글',post_id:'p',created_at:'2026-10-17',posts:{title:'원글',category:'질문'}}]:[{id:'p',title:'내 글',category:'분석',created_at:'2026-10-17'}],{headers:{'content-range':comment?'0-0/3':'0-0/4'}})});configure(f);await f.run('loadMyActivity()');assert.ok(urls.every(url=>url.searchParams.get('author_id')==='eq.user-123'));assert.match(f.node('activitystats').innerHTML,/23점/);assert.match(f.node('activitystats').innerHTML,/참여자/);assert.match(f.node('activityitems').innerHTML,/내 글/);f.run("activityTab='comments'");await f.run('loadMyActivity()');assert.match(f.node('activityitems').innerHTML,/내 댓글/);assert.match(f.node('activityitems').innerHTML,/원글/);assert.equal(f.run('memberLevel(0,0).name'),'새싹');assert.equal(f.run('memberLevel(200,0).name'),'레전드');
 });

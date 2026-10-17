@@ -1,13 +1,13 @@
 'use strict';
 const BOARDS=[{key:'자유',name:'자유게시판',description:'가볍게 나누는 코인 이야기'},{key:'분석',name:'분석·인사이트',description:'함께 살펴보는 시장과 프로젝트'},{key:'소식',name:'뉴스·정보',description:'놓치기 아쉬운 새로운 소식'},{key:'질문',name:'질문·답변',description:'궁금한 점을 묻고 답하는 공간'}];
 let activeView='home',postSort='latest',popularRequest=0,summaryRequest=0,recommendationsReady=null,voteBusy=false;
-const POPULAR_SELECT='id,title,category,created_at,recommendation_count,profiles(nickname),comments(count)';
+const POPULAR_SELECT='id,author_id,title,category,created_at,recommendation_count,profiles(nickname),comments(count)';
 function boardLabel(key){return BOARDS.find(b=>b.key===key)?.name||'전체 이야기';}
 function renderPopularShell(){
  $('popularboards').innerHTML=BOARDS.map(board=>'<section class="panel popular-board"><div class="section-head"><div><h2>'+board.name+'</h2><p>'+board.description+'</p></div><button class="tiny-link" onclick="openBoard(\''+board.key+'\',\'popular\')">더보기 →</button></div><div id="popular-'+board.key+'" class="popular-list"><p class="loading">불러오는 중입니다.</p></div><button class="board-entry" onclick="openBoard(\''+board.key+'\')">게시판 둘러보기 →</button></section>').join('');
 }
 function popularRows(rows){
- return rows.map((post,index)=>'<button class="popular-post" onclick="openPost(\''+post.id+'\')"><span class="popular-rank">'+(index+1)+'</span><span class="popular-post-copy"><span class="popular-title">'+escapeHTML(post.title)+'</span><small>'+escapeHTML(boardLabel(post.category))+' · '+escapeHTML(post.profiles?.nickname||'알트모아 회원')+' · 댓글 '+Number(post.comments?.[0]?.count||0)+'</small></span><span class="recommend-count">추천 <b>'+Number(post.recommendation_count)+'</b></span></button>').join('')||'<div class="popular-empty">아직 추천받은 글이 없어요.<br>좋은 이야기에 첫 추천을 남겨주세요.</div>';
+ return rows.map((post,index)=>'<button class="popular-post" onclick="openPost(\''+post.id+'\')"><span class="popular-rank">'+(index+1)+'</span><span class="popular-post-copy"><span class="popular-title">'+escapeHTML(post.title)+'</span><small>'+escapeHTML(boardLabel(post.category))+' · '+escapeHTML(post.profiles?.nickname||'알트모아 회원')+memberBadge(post.author_id)+' · 댓글 '+Number(post.comments?.[0]?.count||0)+'</small></span><span class="recommend-count">추천 <b>'+Number(post.recommendation_count)+'</b></span></button>').join('')||'<div class="popular-empty">아직 추천받은 글이 없어요.<br>좋은 이야기에 첫 추천을 남겨주세요.</div>';
 }
 async function loadPopular(){
  const token=++popularRequest;
@@ -16,7 +16,7 @@ async function loadPopular(){
  const results=await Promise.allSettled(groups.map(async key=>{const params=new URLSearchParams({select:POPULAR_SELECT,status:'eq.published',recommendation_count:'gt.0',order:'recommendation_count.desc,created_at.desc,id.desc',limit:'5'});if(key!=='전체')params.set('category','eq.'+key);return (await db('posts?'+params)).data;}));
  if(token!==popularRequest)return;
  results.forEach((result,i)=>{const target=i===0?$('popularall'):$('popular-'+groups[i]);
- if(result.status==='fulfilled'){recommendationsReady=true;target.innerHTML=popularRows(result.value);}
+ if(result.status==='fulfilled'){recommendationsReady=true;target.innerHTML=popularRows(result.value);loadMemberBadges(result.value.map(post=>post.author_id));}
  else {if(/recommendation_count|schema cache|does not exist/i.test(result.reason?.message||''))recommendationsReady=false;target.innerHTML='<div class="popular-empty">인기글을 준비하고 있어요.<br>게시판에서 먼저 이야기를 나눠보세요.</div>';}
  });
 }
@@ -27,7 +27,7 @@ async function loadAttentionSummary(){
  }catch{if(token===summaryRequest)$('attentionsummary').innerHTML='<p class="inline-status">관심도를 불러오지 못했어요.</p>';}
 }
 function navigate(view,options={}){
- if(!['home','board','market','rank','saved'].includes(view))view='home';
+ if(!['home','board','market','rank','saved','activity'].includes(view))view='home';
  const previous=activeView;activeView=view;
  if(view!==previous&&['market','saved'].includes(view))marketPage=0;
  if(view==='saved')savedOnly=true;else if(view==='market')savedOnly=false;
@@ -42,12 +42,13 @@ function navigate(view,options={}){
  document.querySelectorAll('[data-side]').forEach(button=>button.classList.toggle('selected',button.dataset.side===view));
  document.querySelectorAll('[data-board]').forEach(button=>button.classList.toggle('selected',view==='board'&&button.dataset.board===category));
  document.querySelectorAll('[data-post-sort]').forEach(button=>button.classList.toggle('on',button.dataset.postSort===postSort));
- const title=view==='home'?'알트모아 — 알트코인 커뮤니티':view==='board'?boardLabel(category)+' — 알트모아':view==='rank'?'알트 관심도 — 알트모아':view==='saved'?'관심 코인 — 알트모아':'알트코인 시세 — 알트모아';document.title=title;
+ const title=view==='home'?'알트모아 — 알트코인 커뮤니티':view==='board'?boardLabel(category)+' — 알트모아':view==='activity'?'내 활동 — 알트모아':view==='rank'?'알트 관심도 — 알트모아':view==='saved'?'관심 코인 — 알트모아':'알트코인 시세 — 알트모아';document.title=title;
  if(options.history!==false){const params=new URLSearchParams();if(view!=='home')params.set('view',view);if(view==='board'){if(category!=='전체')params.set('category',category);if(postSort==='popular')params.set('sort','popular');if(query)params.set('q',query);if(coinFilter)params.set('coin',coinFilter);}const path='/'+(params.size?'?'+params:'');history.pushState({},'',path);}
  if(view==='home'){loadPopular();loadAttentionSummary();}
  if(view==='board'){ $('boardtitle').textContent=boardLabel(category);$('boarddescription').textContent=coinFilter?coinFilter+' 관련 이야기':'새로운 이야기를 나누는 알트모아 커뮤니티';loadPosts();}
  if(panelView==='market'){renderCoins();if(!coins.length)loadMarket();}
  if(view==='rank')loadAttention();
+ if(view==='activity')loadMyActivity();
  if(options.scroll!==false&&previous!==view)window.scrollTo({top:0,behavior:'smooth'});
 }
 function openBoard(board='전체',sort='latest'){page=0;coinFilter='';query='';$('search').value='';navigate('board',{category:board,sort});}
