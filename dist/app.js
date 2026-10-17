@@ -259,19 +259,20 @@ function writePost() {
   if (!config?.communityReady || !session?.user) return authModal();
   composerImages.forEach(image=>URL.revokeObjectURL(image.preview));composerImages=[];
   modal('<div class="eyebrow">NEW CONVERSATION</div><h2>어떤 이야기를 나눠볼까요?</h2><form id="writeform"><label>게시판<select name="category">'+BOARDS.map(board=>'<option'+(category===board.key?' selected':'')+'>'+board.key+'</option>').join('')+'</select></label><label>태그 (필수)<input name="tags" required maxlength="220" value="'+escapeHTML(coinFilter)+'" placeholder="usdt btc 비트코인"></label><p class="subtle">공백 또는 쉼표로 구분 · 1~10개 · 태그당 최대 20자</p><label>제목<input name="title" minlength="2" maxlength="100" required placeholder="제목을 입력하세요"></label><label>내용<textarea name="body" minlength="2" maxlength="10000" required placeholder="서로 존중하며 생각을 나눠주세요"></textarea></label><label>사진 첨부 (최대 3장)<input id="postphotos" type="file" multiple accept="image/jpeg,image/png,image/webp"></label><p class="subtle">사진은 최대 1600px JPEG로 변환하며 위치 등 원본 메타데이터를 제거합니다. 개인정보·타인의 저작물이 담기지 않았는지 확인하세요.</p><div id="photopreviews" class="photo-previews"></div><details class="poll-composer"><summary>투표 추가 (선택)</summary><label>투표 질문<input name="poll_question" maxlength="100" placeholder="예: 가장 자주 보는 거래소는?"></label><label>선택지<textarea name="poll_options" maxlength="490" placeholder="한 줄에 하나씩, 2~6개"></textarea></label><p class="subtle">1인 1표 · 등록 후 선택지와 투표 변경 불가</p></details><p class="subtle">홍보 도배·사칭·개인정보 게시 금지 · <a href="/guidelines">운영 원칙</a></p><button class="solid wide" id="writesubmit">게시글 등록</button><p class="subtle" id="writeerror" role="alert"></p></form>');
+  watchPostCooldown();
   $('postphotos').onchange=event=>selectPhotos([...event.target.files]);
   $('writeform').onsubmit = async event => {
-    event.preventDefault(); const form = new FormData(event.target); const button = $('writesubmit'); button.disabled = true;let uploaded=[],saved=false;
+    event.preventDefault();if(postSubmitting)return;if(postCooldownSeconds()>0){watchPostCooldown();return;}const authorId=session.user.id;const form = new FormData(event.target); const button = $('writesubmit');postSubmitting=true;renderPostSubmit();let uploaded=[],saved=false;
     try {
       if($('postphotos').disabled)throw Error('사진 처리가 끝난 후 등록해 주세요.');
       const tags=parseTags(form.get('tags'));const question=String(form.get('poll_question')||'').trim(),options=String(form.get('poll_options')||'').split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
       if((question||options.length)&&(question.length<2||question.length>100||options.length<2||options.length>6||options.some(o=>o.length>80)||new Set(options).size!==options.length))throw Error('투표 질문 2~100자와 서로 다른 선택지 2~6개(각 80자 이하)를 입력하세요.');
       uploaded=await uploadComposerImages();
-      const { data } = await db('posts', { method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ author_id: session.user.id, category: form.get('category'), tags, images:uploaded,poll_question:question||null,poll_options:options, title: form.get('title').trim(), body: form.get('body').trim() }) });saved=true;
+      const { data } = await db('posts', { method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ author_id: session.user.id, category: form.get('category'), tags, images:uploaded,poll_question:question||null,poll_options:options, title: form.get('title').trim(), body: form.get('body').trim() }) });saved=true;rememberPostCooldown(authorId);
       composerImages.forEach(image=>URL.revokeObjectURL(image.preview));composerImages=[];
       category = form.get('category'); coinFilter = ''; query = ''; $('search').value = ''; page = 0; navigate('board',{category}); await loadPosts(); toast('게시글을 등록했어요.'); loadAttention(); if (data[0]) openPost(data[0].id);
-    } catch (error) { if(!saved&&error.status)await deleteUploadedPhotos(uploaded);if ($('writeerror')) $('writeerror').textContent = /태그|투표|사진|선택지/.test(error.message)?error.message:errorMessage(error); }
-    finally { if (button.isConnected) button.disabled = false; }
+    } catch (error) { if(/60초/.test(error.message||''))rememberPostCooldown(authorId);if(!saved&&error.status)await deleteUploadedPhotos(uploaded);if ($('writeerror')) $('writeerror').textContent = /태그|투표|사진|선택지/.test(error.message)?error.message:errorMessage(error); }
+    finally { postSubmitting=false;if (button.isConnected)watchPostCooldown(); }
   };
 }
 

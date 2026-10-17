@@ -1,5 +1,10 @@
 'use strict';
-let composerImages=[];
+let composerImages=[],postSubmitting=false,postCooldownTimer=null;
+function postCooldownSeconds(){const deadline=Number(read('altmoa-post-cooldown:'+session?.user?.id,0));return Number.isFinite(deadline)?Math.max(0,Math.ceil((deadline-Date.now())/1000)):0;}
+function renderPostSubmit(){const button=$('writesubmit');if(!button||!button.isConnected){if(postCooldownTimer!==null)clearInterval(postCooldownTimer);postCooldownTimer=null;return;}const left=postCooldownSeconds();button.disabled=postSubmitting||left>0;button.textContent=postSubmitting?'등록 중…':left>0?left+'초 후 등록 가능':'게시글 등록';if(!left&&postCooldownTimer!==null){clearInterval(postCooldownTimer);postCooldownTimer=null;}}
+function watchPostCooldown(){renderPostSubmit();if(postCooldownSeconds()>0&&postCooldownTimer===null)postCooldownTimer=setInterval(renderPostSubmit,1000);}
+function rememberPostCooldown(userId=session?.user?.id){if(userId)store('altmoa-post-cooldown:'+userId,Date.now()+60000);watchPostCooldown();}
+
 function parseTags(value){const tags=[...new Set(String(value||'').normalize('NFKC').split(/[\s,]+/).map(t=>t.replace(/^#+/,'').toUpperCase()).filter(Boolean))];if(!tags.length||tags.length>10||tags.some(t=>!/^[A-Z0-9가-힣_]{1,20}$/.test(t)))throw Error('태그는 1~10개, 각 20자 이내의 한글·영문·숫자로 입력하세요.');return tags;}
 function renderTags(tags){return (tags||[]).filter(t=>/^[A-Z0-9가-힣_]{1,20}$/i.test(t)).map(t=>'<span class="post-tag">#'+escapeHTML(t)+'</span>').join('');}
 async function preparePhoto(file){
