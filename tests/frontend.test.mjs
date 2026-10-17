@@ -50,3 +50,11 @@ test('switching exchanges clears old prices and ignores a late response',async()
   assert.match(f.node('coins').innerHTML,/2 USDT/);assert.equal(f.run('selectedExchange'),'binance');
   f.node('marketexchange').value='bithumb';const next=f.run('loadMarket()');assert.doesNotMatch(f.node('coins').innerHTML,/2 USDT/);resolveFirst(Response.json({error:'unavailable'},{status:502}));await next;assert.match(f.node('coins').innerHTML,/연결하지 못했습니다/);
 });
+
+test('coin images escape URLs and stop after all fallback images fail',()=>{
+ const f=fixture(async()=>Response.json({}));assert.doesNotMatch(f.run(`coinIcon('', 'BAD', 'javascript:alert(1)')`),/<img/);
+ assert.match(f.run(`coinIcon('', 'BNB', '/assets/coins/BNB.svg')`),/BNB.svg/);
+ assert.doesNotMatch(f.run(`coinIcon('', 'BAD', 'https://evil.example/logo.png')`),/<img/);
+ f.run(`testImage={dataset:{fallback:JSON.stringify(['https://static.upbit.com/logos/SUI.png'])},parentElement:{classList:{remove(){}}},getAttribute(){return this.src},src:'/assets/coins/SUI.svg',remove(){this.removed=true}};coinImageError(testImage);coinImageError(testImage)`);
+ assert.equal(f.run('testImage.removed'),true);assert.equal(f.run('failedCoinImages.size'),2);
+});

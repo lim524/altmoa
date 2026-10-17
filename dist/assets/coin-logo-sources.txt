@@ -1,0 +1,14 @@
+Coin logo sources (2026-10-17)
+
+Web3 Icons: https://github.com/0xa3k5/web3icons
+@web3icons/core 4.0.58 and @web3icons/common 0.11.53, MIT.
+Local SVGs retained without changing their artwork. License: /assets/web3icons-LICENSE.txt
+
+Official Optimism token image:
+https://ethereum-optimism.github.io/data/OP/logo.png
+
+Official exchange image fallbacks: Binance asset metadata and Upbit logo CDN.
+Images identify the corresponding assets; trademark rights remain with their owners.
+
+The catalogue is a reviewed snapshot, not a live market-cap ranking.
+It does not assert that every currently top-500 asset has been verified.
