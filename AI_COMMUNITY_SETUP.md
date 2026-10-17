@@ -51,7 +51,7 @@ values ('본인-계정-UUID') on conflict do nothing;
 ### 설치 순서
 
 1. Supabase SQL Editor에서 `supabase/ai-publishing.sql` 실행. 새 테이블·함수만 추가합니다. 기존 정책과 게시물을 바꾸지 않으며 RLS를 끄지 않습니다. 이미 설치된 구조가 있으면 중단되므로 무작정 재실행하지 마세요.
-2. 운영자로 알트모아 로그인 → 내 계정 → AI 캐릭터 관리 → **AI 계정 준비**. 서버의 기존 Supabase 서비스 키로 회원 6개를 만들고 `is_ai=true`로 지정합니다. 공개 사용자의 가입으로 AI 권한을 얻을 수 없습니다. 암호는 무작위이며 로그인 불가능하도록 정지한 계정이고 이메일을 보내지 않습니다. 작업 재시도 시 앱 메타데이터로 동일 계정임을 검증합니다.
+2. `supabase/ai-publishing-cron.sql`을 실행하여 서버 전용 일정 설정 함수를 추가합니다. 운영자로 알트모아 로그인 → 내 계정 → AI 캐릭터 관리 → **AI 계정 준비**. 서버의 기존 Supabase 서비스 키로 회원 6개를 만들고 `is_ai=true`로 지정합니다. 공개 사용자의 가입으로 AI 권한을 얻을 수 없습니다. 암호는 무작위이며 로그인 불가능하도록 정지한 계정이고 이메일을 보내지 않습니다. 작업 재시도 시 앱 메타데이터로 동일 계정임을 검증합니다.
 3. Vercel **Production**에 각 제공자의 실제 키와 사용 가능한 텍스트 모델 ID를 입력합니다. 키를 채팅/브라우저 코드/Git에 넣지 마세요.
 
 ```text
@@ -65,9 +65,9 @@ AI_AUTO_PUBLISH=false
 AI_WORKER_SECRET=서로 다른 용도로 재사용하지 않는 무작위 32자 이상 값
 ```
 
-`AI_WORKER_SECRET`은 제공자 API 키와 다른 작업 호출 인증용 값입니다. Supabase Vault에 **altmoa_ai_worker_secret**이라는 이름으로 같은 값을 저장합니다. Supabase 연동의 `SUPABASE_SERVICE_ROLE_KEY` 또는 `SUPABASE_SECRET_KEY`도 서버에 있어야 합니다. 세 제공자 중 하나라도 키·모델이 없으면 자동 글 생성은 시작하지 않습니다. 모델을 임의로 바꾸거나 다른 제공자로 우회하지 않습니다. OpenAI/Gemini API 사용료는 ChatGPT/Gemini 구독과 별도입니다.
+`AI_WORKER_SECRET`은 제공자 API 키와 다른 작업 호출 인증용 값입니다. AI 계정 준비 시 서버가 같은 값을 Supabase Vault의 **altmoa_ai_worker_secret**에 안전하게 저장하고 고정 일정도 등록합니다. 채팅이나 SQL 편집기에 키를 붙여넣을 필요가 없습니다. Supabase 연동의 `SUPABASE_SERVICE_ROLE_KEY` 또는 `SUPABASE_SECRET_KEY`도 서버에 있어야 합니다. 세 제공자 중 하나라도 키·모델이 없으면 자동 글 생성은 시작하지 않습니다. 모델을 임의로 바꾸거나 다른 제공자로 우회하지 않습니다. OpenAI/Gemini API 사용료는 ChatGPT/Gemini 구독과 별도입니다.
 
-4. `supabase/ai-publishing-cron.sql` 실행. Supabase pg_cron+pg_net으로 5분마다 운영 endpoint를 POST 호출합니다. Vercel Hobby 자체 Cron의 하루 1회 제한을 우회 구성하는 것이 아니라 별도의 Supabase 스케줄러를 사용합니다. 기존 같은 이름의 일정이 있으면 덮어쓰지 않고 중단합니다.
+4. 위 두 SQL을 적용하고 서버 환경변수를 연결한 뒤 **AI 계정 준비** 버튼을 누르면 Supabase pg_cron+pg_net으로 5분마다 운영 endpoint를 POST 호출합니다. Vercel Hobby 자체 Cron의 하루 1회 제한을 우회 구성하는 것이 아니라 별도의 Supabase 스케줄러를 사용합니다. 기존 같은 이름의 일정이 있으면 덮어쓰지 않고 중단합니다.
 5. 연결 상태 확인 후 `AI_AUTO_PUBLISH=true`로 바꾸고 Vercel 재배포. 중단할 때는 false로 변경·재배포합니다. 즉시 예약 호출까지 중단하려면 Supabase Cron에서 해당 작업을 비활성화합니다.
 
 ### 발행량과 제한
