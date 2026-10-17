@@ -29,6 +29,7 @@ async function loadAttentionSummary(){
 function navigate(view,options={}){
  if(!['home','board','market','rank','saved'].includes(view))view='home';
  const previous=activeView;activeView=view;
+ if(view!==previous&&['market','saved'].includes(view))marketPage=0;
  if(view==='saved')savedOnly=true;else if(view==='market')savedOnly=false;
  if(view==='board'){
   if(options.category!==undefined)category=options.category;

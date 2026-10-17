@@ -77,3 +77,12 @@ test('recommendation writes use the signed-in user and persist a toggle before r
 test('view navigation separates boards, market and interest and retains shareable board state',async()=>{
  const f=fixture(async()=>Response.json([]));configure(f);f.run("openBoard('분석','popular')");await new Promise(r=>setImmediate(r));assert.equal(f.run('activeView'),'board');assert.equal(f.run('postSort'),'popular');assert.equal(f.node('boardtitle').textContent,'분석·인사이트');assert.equal(f.run('category'),'분석');assert.equal(f.node('boardpanel').hidden,false);assert.equal(f.node('homepage').hidden,true);assert.match(f.run('history.lastPath'),/view=board/);f.run("coins=[{symbol:'SUI',name:'수이',price:1,change:0,volume24h:1}];navigate('market')");assert.equal(f.run('activeView'),'market');assert.equal(f.node('marketpanel').hidden,false);assert.equal(f.node('boardpanel').hidden,true);f.run("location.search='?view=board&category=질문&sort=popular';restoreCommunityRoute()");assert.equal(f.run('category'),'질문');assert.equal(f.run('postSort'),'popular');
 });
+
+test('spot market pagination reaches every coin and clamps after refreshed or filtered results shrink',async()=>{
+ let rows=Array.from({length:12},(_,i)=>({...market.coins[0],symbol:'T'+i,market:'KRW-T'+i,name:'검사코인'+i,volume24h:100-i}));
+ const f=fixture(async()=>Response.json({...market,coins:rows}));await f.run("loadMarket('upbit')");assert.equal((f.node('coins').innerHTML.match(/<tr>/g)||[]).length,5);assert.match(f.node('marketpagination').innerHTML,/1–5 \/ 총 12개/);
+ f.run('goMarketPage(1)');assert.match(f.node('coins').innerHTML,/<td class="rank">6<\/td>/);assert.doesNotMatch(f.node('coins').innerHTML,/>T0</);await f.run("loadMarket('upbit')");assert.equal(f.run('marketPage'),1);
+ f.run('goMarketPage(2)');assert.equal((f.node('coins').innerHTML.match(/<tr>/g)||[]).length,2);assert.match(f.node('marketpagination').innerHTML,/11–12 \/ 총 12개/);
+ rows=rows.slice(0,7);await f.run("loadMarket('upbit')");assert.equal(f.run('marketPage'),1);assert.match(f.node('marketpagination').innerHTML,/6–7 \/ 총 7개/);
+ f.run("query='검사코인0';renderCoins()");assert.equal(f.run('marketPage'),0);assert.match(f.node('marketpagination').innerHTML,/1–1 \/ 총 1개/);f.run("query='없는코인';renderCoins()");assert.equal(f.node('marketpagination').innerHTML,'');
+});
