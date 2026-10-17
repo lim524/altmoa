@@ -217,10 +217,12 @@ test('signing out discards a late owner-only profile response',async()=>{
  assert.match(f.node('membercontent').innerHTML,/비공개/);assert.doesNotMatch(f.node('membercontent').innerHTML,/소유자 전용 목록/);
 });
 
-test('technical timeframe changes discard late results and expose completed-candle metrics',async()=>{
- let release;const data={status:'ready',trend:'up',rsi14:65.2,volumeRatio:2.4,closedAt:'2026-10-17T15:59:59Z'};
- const f=fixture(async url=>{const u=new URL(url,'https://altmoa.example');return u.searchParams.get('interval')==='1h'?new Promise(r=>release=r):Response.json({...data,rsi14:44.5,trend:'down'});});
- f.run("activeView='market';coins=[{symbol:'SUI',assetId:'sui',market:'SUIUSDT',name:'수이',price:1,change:1,volume24h:100}];");
- const first=f.run('loadPageTechnicals(coins)');await f.run("technicalInterval='4h';loadPageTechnicals(coins)");release(Response.json(data));await first;
- assert.match(f.node('technical-0').innerHTML,/44.5/);assert.doesNotMatch(f.node('technical-0').innerHTML,/65.2/);assert.match(f.node('technical-0').innerHTML,/2.40배|완료 봉/);
+test('ranking timeframe changes discard late snapshots and pagination uses the globally sorted result',async()=>{
+ let release;const score={version:'v1',total:80,trend:50,rsi:20,volume:10};
+ const item={symbol:'SUI',name:'수이',status:'ready',trend:'up',rsi14:65.2,volumeRatio:2.4,closedAt:'2026-10-17T15:59:59Z',scoring:score};
+ const snapshot={status:'ready',interval:'4h',items:Array.from({length:23},(_,i)=>({...item,symbol:'T'+i,scoring:{...score,total:90-i}})),totalUniverse:25,insufficient:1,failed:1,asOf:'2026-10-17T16:00:00Z'};
+ const f=fixture(async url=>{const u=new URL(url,'https://altmoa.example');return u.searchParams.get('interval')==='1h'?new Promise(r=>release=r):Response.json(snapshot);});
+ f.run("activeView='market';");const first=f.run('loadPageTechnicals()');await f.run("technicalInterval='4h';loadPageTechnicals()");release(Response.json({...snapshot,interval:'1h',items:[]}));await first;
+ assert.match(f.node('technicalrows').innerHTML,/>T0</);assert.match(f.node('technicalpagination').innerHTML,/1–10 \/ 23개/);f.run('goTechnicalRankPage(2)');assert.match(f.node('technicalrows').innerHTML,/>T20</);assert.doesNotMatch(f.node('technicalrows').innerHTML,/>T0</);assert.match(f.node('technicalpagination').innerHTML,/21–23 \/ 23개/);
+ assert.match(f.node('technicalrankstatus').textContent,/4시간봉/);assert.match(f.node('technicalrankstatus').textContent,/데이터 부족 1개/);
 });

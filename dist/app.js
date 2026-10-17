@@ -22,6 +22,7 @@ const time = value => new Date(value).toLocaleString('ko-KR', { month: 'numeric'
 const won = n => '₩' + new Intl.NumberFormat('ko-KR', { maximumFractionDigits: n < 1 ? 5 : n < 100 ? 2 : 0 }).format(n);
 const volume = n => n >= 1e12 ? (n / 1e12).toFixed(2) + '조' : n >= 1e8 ? (n / 1e8).toFixed(1) + '억' : n>=1e4?(n / 1e4).toFixed(0) + '만':new Intl.NumberFormat('ko-KR',{maximumFractionDigits:2}).format(n);
 async function loadConversion(){
+ if(conversion&&Date.now()-Date.parse(conversion.fetchedAt)<120000)return;
  if(conversionPromise)return conversionPromise;
  conversionPromise=(async()=>{try{const {data}=await fetchJSON('/api/conversion');if(!Number.isFinite(data.rate)||data.rate<=0||!Number.isFinite(Date.parse(data.fetchedAt)))throw new Error('invalid_rate');conversion=data;}catch{conversion=null;}finally{conversionPromise=null;}})();return conversionPromise;
 }
@@ -152,11 +153,12 @@ function attentionDetail(symbol){
  modal('<div class="eyebrow">'+'ALTMOA COMMUNITY'+'</div><h2 class="coin-detail-heading">'+coinIcon(symbol)+escapeHTML(item.name)+' <span class="subtle">'+escapeHTML(symbol)+'</span></h2><p>24시간 등락률 '+attentionChange(item.priceChange24h)+' <small class="subtle">바이낸스 현물 USDT</small></p><p>선택한 기간에 '+Number(item.mentions)+'개의 중복 제외 언급 글이 관측됐어요.</p><p class="subtle">'+'내부 게시글의 언급 수이며, 댓글과 추천 수는 포함하지 않습니다.'+'</p><ul class="attention-links">'+links+'</ul>');
 }
 async function loadMarket(exchange=selectedExchange) {
+  loadPageTechnicals();
   if(!exchangeOptions.some(e=>e[0]===exchange))return;
   document.querySelectorAll('[data-exchange]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.exchange===exchange)));
   if(marketBusy&&loadingExchange===exchange)return;
   const requestId=++marketRequest;marketBusy=true;loadingExchange=exchange;
-  if(selectedExchange!==exchange){selectedExchange=exchange;technicalRequest++;$('technicalrows').innerHTML='';marketPage=0;$('marketpagination').innerHTML='';coins=[];lastFetchedAt=null;marketFailed=false;$('coins').innerHTML='<tr><td colspan="6" class="loading">선택한 거래소 시세를 불러오고 있어요.</td></tr>';$('ticker').innerHTML='<span class="inline-status">시세 연결 중...</span>';$('marketbadge').textContent='연결 중';$('markettime').textContent='연결 중';}
+  if(selectedExchange!==exchange){selectedExchange=exchange;marketPage=0;$('marketpagination').innerHTML='';coins=[];lastFetchedAt=null;marketFailed=false;$('coins').innerHTML='<tr><td colspan="6" class="loading">선택한 거래소 시세를 불러오고 있어요.</td></tr>';$('ticker').innerHTML='<span class="inline-status">시세 연결 중...</span>';$('marketbadge').textContent='연결 중';$('markettime').textContent='연결 중';}
   try {
     const [{data}]=await Promise.all([fetchJSON('/api/market?exchange='+encodeURIComponent(exchange)),loadConversion()]);if(requestId!==marketRequest)return;
     if(!Array.isArray(data.coins)||!data.coins.length||(data.id&&data.id!==exchange))throw new Error('invalid_market');
@@ -172,7 +174,7 @@ async function loadMarket(exchange=selectedExchange) {
   } catch {
     if(requestId!==marketRequest)return;marketFailed=true;$('marketbadge').textContent='연결 지연';
     $('markettime').textContent=coins.length?'갱신 실패 · 마지막 성공: '+time(lastFetchedAt)+' KST (이전 데이터)':'선택한 거래소에 연결하지 못했어요. 다른 거래소를 선택하거나 새로고침해 주세요.';
-    if(!coins.length){technicalRequest++;$('technicalrows').innerHTML='<p class="subtle">시세 연결 후 지표를 표시합니다.</p>';$('marketpagination').innerHTML='';$('coins').innerHTML='<tr><td colspan="6" class="empty">선택한 거래소에 연결하지 못했습니다.</td></tr>';$('ticker').innerHTML='<span class="inline-status">선택한 거래소 시세 연결 지연</span>';}
+    if(!coins.length){$('marketpagination').innerHTML='';$('coins').innerHTML='<tr><td colspan="6" class="empty">선택한 거래소에 연결하지 못했습니다.</td></tr>';$('ticker').innerHTML='<span class="inline-status">선택한 거래소 시세 연결 지연</span>';}
     else $('ticker').innerHTML='<span class="inline-status">시세 갱신 지연 · 마지막 조회 '+escapeHTML(time(lastFetchedAt))+' KST</span>';
   } finally {if(requestId===marketRequest){marketBusy=false;loadingExchange=null;}}
 }
@@ -384,20 +386,50 @@ async function init() {
 }
 let technicalInterval='1h',technicalRequest=0,detailTechnicalRequest=0;
 const technicalIntervals={'1h':'1시간봉','4h':'4시간봉','1d':'일봉'};
-function setTechnicalInterval(interval){if(!technicalIntervals[interval])return;technicalInterval=interval;renderCoins();}
+function setTechnicalInterval(interval){if(!technicalIntervals[interval])return;technicalInterval=interval;technicalRankPage=0;loadPageTechnicals();}
 function technicalStats(data,expanded=false){
  if(data.status!=='ready')return '<p class="subtle">'+escapeHTML(data.message||'지표를 표시할 수 없습니다.')+'</p>';
  const trend={up:'상승 정렬',down:'하락 정렬',mixed:'혼조·중립'},rsi=data.rsi14;
  const state=rsi>=70?'과열 구간':rsi<=30?'침체 구간':rsi>=50?'상승 우세':'하락 우세';
- return '<div class="technical-metrics"><div><small>20·60봉 추세</small><b class="'+(data.trend==='up'?'up':data.trend==='down'?'down':'')+'">'+escapeHTML(trend[data.trend]||'—')+'</b></div><div><small>RSI(14) · '+state+'</small><b>'+Number(rsi).toFixed(1)+'</b></div><div><small>거래량 / 이전 20봉</small><b>'+(Number.isFinite(data.volumeRatio)?data.volumeRatio.toFixed(2)+'배':'—')+'</b></div></div>'+(expanded?'<p class="subtle">마지막 종가 '+priceLabel(data.close,'USDT')+' · SMA20 '+priceLabel(data.sma20,'USDT')+' · SMA60 '+priceLabel(data.sma60,'USDT')+'</p>':'')+'<small class="technical-time">완료 봉 '+escapeHTML(time(data.closedAt))+' KST</small>';
+ return (data.scoring&&expanded?'<p class="technical-score-line">기술지표 점수 <b>'+data.scoring.total.toFixed(1)+'</b> / 100 <small>추세 '+data.scoring.trend+'/50 · RSI '+data.scoring.rsi+'/30 · 거래량 '+data.scoring.volume+'/20</small></p>':'')+'<div class="technical-metrics"><div><small>20·60봉 추세</small><b class="'+(data.trend==='up'?'up':data.trend==='down'?'down':'')+'">'+escapeHTML(trend[data.trend]||'—')+'</b></div><div><small>RSI(14) · '+state+'</small><b>'+Number(rsi).toFixed(1)+'</b></div><div><small>거래량 / 이전 20봉</small><b>'+(Number.isFinite(data.volumeRatio)?data.volumeRatio.toFixed(2)+'배':'—')+'</b></div></div>'+(expanded?'<p class="subtle">마지막 종가 '+priceLabel(data.close,'USDT')+' · SMA20 '+priceLabel(data.sma20,'USDT')+' · SMA60 '+priceLabel(data.sma60,'USDT')+'</p>':'')+'<small class="technical-time">완료 봉 '+escapeHTML(time(data.closedAt))+' KST</small>';
 }
 function technicalURL(coin,interval,exchange){return '/api/technical?'+new URLSearchParams({symbol:coin.symbol,interval,exchange,asset:coin.assetId||''});}
-async function loadPageTechnicals(visible){
- const request=++technicalRequest;if(!['market','saved'].includes(activeView))return;
- const interval=technicalInterval,exchange=selectedExchange;
+let technicalRankData=null,technicalRankPage=0,technicalRankBusy=false,technicalRankLoadingInterval=null,technicalRankFetchedAt=0,technicalRankPolls=0;
+const TECHNICAL_PAGE_SIZE=10;
+async function loadPageTechnicals(){
+ if(!['market','saved'].includes(activeView))return;
+ const interval=technicalInterval;
  document.querySelectorAll('[data-technical-interval]').forEach(b=>{const on=b.dataset.technicalInterval===interval;b.setAttribute('aria-pressed',String(on));b.classList.toggle('on',on);});
- $('technicalrows').innerHTML=visible.map((c,i)=>'<article class="technical-card"><b>'+escapeHTML(c.symbol)+'</b> <small>'+technicalIntervals[interval]+'</small><div id="technical-'+i+'"><p class="subtle">불러오는 중…</p></div></article>').join('')||'<p class="subtle">표시할 코인이 없습니다.</p>';
- await Promise.allSettled(visible.map(async(c,i)=>{try{const {data}=await fetchJSON(technicalURL(c,interval,exchange));if(request!==technicalRequest)return;$('technical-'+i).innerHTML=technicalStats(data);}catch{if(request===technicalRequest)$('technical-'+i).innerHTML='<p class="subtle">지표 연결 지연 · 다음 갱신 때 다시 확인합니다.</p>';}}));
+ if(technicalRankData?.interval===interval&&Date.now()-technicalRankFetchedAt<300000){renderTechnicalRanking();return;}
+ if(technicalRankBusy&&technicalRankLoadingInterval===interval)return;
+ const request=++technicalRequest;technicalRankBusy=true;technicalRankLoadingInterval=interval;
+ $('technicalrows').innerHTML='<p class="subtle">전체 코인을 집계한 뒤 점수순으로 정렬하고 있어요. 첫 조회는 최대 2분 정도 걸릴 수 있습니다.</p>';$('technicalpagination').innerHTML='';$('technicalrankstatus').textContent='바이낸스 전체 USDT 현물 · 완료된 봉 기준';
+ try{
+  const {data}=await fetchJSON('/api/technical-rank?'+new URLSearchParams({interval}),{signal:AbortSignal.timeout(110000)});if(request!==technicalRequest)return;
+  if(data.status==='building'){
+   $('technicalrows').innerHTML='<p class="subtle">'+escapeHTML(data.message)+'</p>';
+   if(++technicalRankPolls<=24)setTimeout(()=>{if(request===technicalRequest&&['market','saved'].includes(activeView))loadPageTechnicals();},5000);
+   else $('technicalrows').innerHTML='<p class="subtle">집계가 지연되고 있어요. <button onclick="retryTechnicalRanking()">다시 확인 →</button></p>';
+   return;
+  }
+  if(data.status!=='ready'||!Array.isArray(data.items))throw Error('invalid_ranking');
+  technicalRankData=data;technicalRankFetchedAt=data.stale?Date.now()-270000:(Date.parse(data.completedAt||data.asOf)||Date.now());technicalRankPolls=0;renderTechnicalRanking();
+ }catch{if(request===technicalRequest){$('technicalrows').innerHTML='<p class="subtle">랭킹 연결이 지연되고 있습니다. <button onclick="retryTechnicalRanking()">다시 확인 →</button></p>';$('technicalrankstatus').textContent='전체 집계를 완료하지 못해 부분 점수 순위는 표시하지 않습니다.';}}
+ finally{if(request===technicalRequest){technicalRankBusy=false;technicalRankLoadingInterval=null;}}
+}
+function retryTechnicalRanking(){technicalRankFetchedAt=0;technicalRankPolls=0;loadPageTechnicals();}
+function renderTechnicalRanking(){
+ const data=technicalRankData;if(!data||data.interval!==technicalInterval)return;
+ const pages=Math.max(1,Math.ceil(data.items.length/TECHNICAL_PAGE_SIZE));technicalRankPage=Math.min(Math.max(0,technicalRankPage),pages-1);const offset=technicalRankPage*TECHNICAL_PAGE_SIZE;
+ $('technicalrankstatus').textContent=(data.stale?'갱신 지연 · 이전 집계 · ':'')+technicalIntervals[data.interval]+' · '+data.items.length+'개 평가 / 전체 '+Number(data.totalUniverse)+'개 · 데이터 부족 '+Number(data.insufficient)+'개 · 조회 실패 '+Number(data.failed)+'개 · 기준 '+time(data.asOf)+' KST · 약 5분 캐시';
+ $('technicalrows').innerHTML=data.items.slice(offset,offset+TECHNICAL_PAGE_SIZE).map((c,i)=>'<article class="technical-card"><button class="technical-coin-button" onclick="openTechnicalRankCoin(\''+c.symbol+'\')"><span class="summary-rank">'+(offset+i+1)+'</span>'+coinIcon(c.symbol,c.symbol,c.logoUrl)+'<span><b>'+escapeHTML(c.symbol)+'</b><small>'+escapeHTML(c.name)+'</small></span><strong>'+Number(c.scoring.total).toFixed(1)+'<small>/ 100점</small></strong></button>'+technicalStats(c)+'<small class="technical-score-parts">추세 '+c.scoring.trend+'/50 · RSI '+c.scoring.rsi+'/30 · 거래량 '+c.scoring.volume+'/20</small></article>').join('')||'<p class="subtle">현재 기준으로 점수를 계산할 수 있는 코인이 없습니다.</p>';
+ const start=Math.max(0,Math.min(technicalRankPage-2,pages-5));
+ $('technicalpagination').innerHTML=data.items.length?'<span>'+(offset+1)+'–'+Math.min(offset+TECHNICAL_PAGE_SIZE,data.items.length)+' / '+data.items.length+'개</span><div class="market-page-buttons"><button onclick="goTechnicalRankPage('+(technicalRankPage-1)+')"'+(technicalRankPage===0?' disabled':'')+'>← 이전</button>'+Array.from({length:Math.min(5,pages)},(_,i)=>start+i).map(index=>'<button onclick="goTechnicalRankPage('+index+')"'+(index===technicalRankPage?' class="on" aria-current="page"':'')+'>'+(index+1)+'</button>').join('')+'<button onclick="goTechnicalRankPage('+(technicalRankPage+1)+')"'+(technicalRankPage===pages-1?' disabled':'')+'>다음 →</button></div>':'';
+}
+function goTechnicalRankPage(page){if(!Number.isInteger(page)||!technicalRankData||page<0||page>=Math.ceil(technicalRankData.items.length/TECHNICAL_PAGE_SIZE))return;technicalRankPage=page;renderTechnicalRanking();}
+function openTechnicalRankCoin(symbol){
+ const c=technicalRankData?.items.find(c=>c.symbol===symbol);if(!c)return;++detailRequest;
+ modal('<div class="eyebrow">바이낸스 USDT 현물 · '+technicalIntervals[technicalRankData.interval]+'</div><h2 class="coin-detail-heading">'+coinIcon(c.symbol,c.symbol,c.logoUrl)+escapeHTML(c.name)+' '+escapeHTML(c.symbol)+'</h2>'+technicalStats(c,true)+'<p class="subtle">랭킹 기준 '+time(technicalRankData.asOf)+' KST · 자체 기술지표 점수이며 투자 권유·상승 확률이 아닙니다.</p><button class="solid" onclick="document.getElementById(\'dialog\').close();lounge(\''+symbol+'\')">'+escapeHTML(symbol)+' 이야기 보기 →</button>');
 }
 async function loadDetailTechnical(symbol,interval,token){
  const coin=coins.find(c=>c.symbol===symbol);if(!coin||!technicalIntervals[interval]||token!==detailRequest||!$('dialog').open)return;

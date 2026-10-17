@@ -1,3 +1,4 @@
+import {getTechnicalRanking} from '../lib/technical-ranking.mjs';
 import {getTechnical} from '../lib/technical.mjs';
 import {recordHumanView} from '../lib/post-views.mjs';
 import {runAIReplies} from '../lib/ai-replies.mjs';
@@ -23,6 +24,7 @@ export async function GET(request) {
   }
   if(route==='public-community'||route==='public-post')return publicCommunity(u,route==='public-post');
   if(route==='ai')return json(aiConfiguration());
+  if(route==='technical-rank'){try{const data=await getTechnicalRanking(u);return json(data,data.status==='building'?202:200,data.status==='ready'&&!data.stale?'public, max-age=0, s-maxage=30':'no-store');}catch(error){return json({error:error.status===400?'올바른 봉 주기를 선택해 주세요.':'기술지표 랭킹을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.'},error.status||503);}}
   if(route==='technical'){try{return json(await getTechnical(u),200,'public, max-age=0, s-maxage=60');}catch(error){return json({error:error.status===400?'올바른 코인과 봉 주기를 선택해 주세요.':'차트 지표를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.'},error.status||502);}}
   if (route === 'attention') return json(await getAttention(u));
   if(route==='conversion'){try{return json(await fetchConversion(),200,'public, max-age=0, s-maxage=30, stale-while-revalidate=60');}catch{return json({error:'USDT/KRW 환산 시세 연결 지연'},502);}}
