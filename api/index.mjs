@@ -1,4 +1,4 @@
-import { normalizeMarket } from '../lib/market.mjs';
+import { EXCHANGES,fetchExchange,compareAsset } from '../lib/exchanges.mjs';
 import { getAttention } from '../lib/attention-api.mjs';
 const json = (body, status = 200, cache = 'no-store') => Response.json(body, { status, headers: { 'Cache-Control': cache, 'X-Content-Type-Options': 'nosniff' } });
 export async function GET(request) {
@@ -17,18 +17,17 @@ export async function GET(request) {
   }
   if (route === 'attention') return json(await getAttention(u));
   if (route !== 'market') return json({ error: 'Not found' }, 404);
+  const asset=u.searchParams.get('asset');
+  if(asset){
+    const comparison=await compareAsset(asset);
+    return comparison?json(comparison,200,'public, max-age=0, s-maxage=30, stale-while-revalidate=60'):json({error:'Unknown asset'},400);
+  }
+  const exchange=u.searchParams.get('exchange')||'upbit';
+  if(!EXCHANGES[exchange])return json({error:'지원하지 않는 거래소입니다.'},400);
   try {
-    const options = { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(8000) };
-    const [ticks, names] = await Promise.all([
-      fetch('https://api.upbit.com/v1/ticker/all?quote_currencies=KRW', options),
-      fetch('https://api.upbit.com/v1/market/all?is_details=false', options)
-    ]);
-    if (!ticks.ok || !names.ok) throw new Error('upstream_status');
-    const coins = normalizeMarket(await ticks.json(), await names.json());
-    if (!coins.length) throw new Error('empty_market');
-    return json({ source: 'Upbit', currency: 'KRW', fetchedAt: new Date().toISOString(), coins }, 200, 'public, max-age=0, s-maxage=30, stale-while-revalidate=60');
+    return json(await fetchExchange(exchange),200,'public, max-age=0, s-maxage=30, stale-while-revalidate=60');
   } catch (error) {
-    console.error('market_fetch_failed', error.name);
-    return json({ error: '시세를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.' }, 502);
+    console.error('market_fetch_failed',exchange,error.status||error.name);
+    return json({ exchange, source:EXCHANGES[exchange].source, error:EXCHANGES[exchange].name+' 시세를 불러오지 못했습니다. 다른 거래소를 선택하거나 잠시 후 다시 시도해 주세요.' }, 502);
   }
 }

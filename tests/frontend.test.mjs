@@ -11,7 +11,7 @@ function fixture(handler) {
   vm.runInContext(code,context);
   return { run:source=>vm.runInContext(source,context),node:element,data };
 }
-const market = { fetchedAt:'2026-10-17T08:00:00Z',coins:[{symbol:'SUI',name:'수이',price:100,change:-2,volume24h:1000000000}] };
+const market = { id:'upbit',name:'업비트',source:'Upbit',currency:'KRW', fetchedAt:'2026-10-17T08:00:00Z',coins:[{symbol:'SUI',market:'KRW-SUI',exchange:'upbit',quote:'KRW',name:'수이',price:100,change:-2,volume24h:1000000000}] };
 const configure = f => f.run("config={communityReady:true,supabaseUrl:'https://test.supabase.co',supabaseKey:'sb_publishable_example'};setSession({access_token:'token',refresh_token:'refresh',expires_at:Date.now()/1000+3600,user:{id:'user-123'}})");
 
 test('unconnected community never displays demo posts or fake login', async()=>{
@@ -21,7 +21,7 @@ test('unconnected community never displays demo posts or fake login', async()=>{
 
 test('market failure after a successful response explicitly labels old data',async()=>{
   let fail=false;const f=fixture(async()=>{if(fail)throw new Error('network');return Response.json(market)});
-  await f.run('loadMarket()');assert.match(f.node('coins').innerHTML,/수이/);fail=true;await f.run('loadMarket()');assert.match(f.node('markettime').innerHTML,/이전 데이터/);assert.match(f.node('ticker').innerHTML,/갱신 지연/);
+  await f.run('loadMarket()');assert.match(f.node('coins').innerHTML,/수이/);fail=true;await f.run('loadMarket()');assert.match(f.node('markettime').textContent,/이전 데이터/);assert.match(f.node('ticker').innerHTML,/갱신 지연/);
 });
 
 test('favorites persist and nonmatching search does not show fabricated results',async()=>{
@@ -41,4 +41,12 @@ test('post submission sends signed-in author and does not fake success on DB fai
 test('successful DB post submission reloads feed and opens the saved post',async()=>{
   const id='00000000-0000-0000-0000-000000000001';
   const f=fixture(async(url,options)=>{if(options.method==='POST')return Response.json([{id}]);if(String(url).includes('comments?'))return Response.json([]);return Response.json([{id,title:'저장된 제목',body:'저장된 본문',category:'자유',author_id:'user-123',created_at:'2026-10-17T08:00:00Z',profiles:{nickname:'작성자'},comments:[{count:0}]}],{headers:{'content-range':'0-0/1'}})});configure(f);f.run('writePost()');await f.node('writeform').onsubmit({preventDefault(){},target:{category:'자유',coin:'',title:'저장된 제목',body:'저장된 본문'}});await new Promise(r=>setImmediate(r));assert.match(f.node('posts').innerHTML,/저장된 제목/);assert.match(f.node('modalcontent').innerHTML,/저장된 본문/);
+});
+
+
+test('switching exchanges clears old prices and ignores a late response',async()=>{
+  let resolveFirst;const f=fixture(url=>String(url).includes('binance')?Promise.resolve(Response.json({...market,id:'binance',source:'Binance',currency:'USDT',coins:[{...market.coins[0],market:'SUIUSDT',exchange:'binance',quote:'USDT',price:2}]})):new Promise(resolve=>{resolveFirst=resolve}));
+  const first=f.run('loadMarket()');f.node('marketexchange').value='binance';await f.run('loadMarket()');resolveFirst(Response.json(market));await first;
+  assert.match(f.node('coins').innerHTML,/2 USDT/);assert.equal(f.run('selectedExchange'),'binance');
+  f.node('marketexchange').value='bithumb';const next=f.run('loadMarket()');assert.doesNotMatch(f.node('coins').innerHTML,/2 USDT/);resolveFirst(Response.json({error:'unavailable'},{status:502}));await next;assert.match(f.node('coins').innerHTML,/연결하지 못했습니다/);
 });

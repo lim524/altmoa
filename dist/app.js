@@ -7,13 +7,19 @@ let config = null, session = read('altmoa-session', null, sessionStorage), refre
 let coins = [], posts = [], favorites = read('altmoa-stars', []), sort = 'volume', query = '', category = '전체', coinFilter = '', savedOnly = false;
 let page = 0, total = 0, feedRequest = 0, marketBusy = false, activePostId = null, moderator = false;
 let lastFetchedAt = null, marketFailed = false;
+let selectedExchange='upbit',loadingExchange=null,marketRequest=0,detailRequest=0;
+let marketInfo={id:'upbit',name:'업비트',quote:'KRW',source:'Upbit',changeLabel:'전일 종가 대비 (UTC)'};
+const exchangeOptions=[['upbit','업비트','kr','KRW'],['bithumb','빗썸','kr','KRW'],['binance','바이낸스','global','USDT']];
+const priceLabel=(n,quote='KRW')=>quote==='KRW'?won(n):new Intl.NumberFormat('en-US',{maximumFractionDigits:n<1?8:4}).format(n)+' '+quote;
+const favoriteKey=c=>(c.exchange||selectedExchange)+':'+c.market;
+const isFavorite=c=>favorites.includes(favoriteKey(c))||((c.exchange||selectedExchange)==='upbit'&&favorites.includes(c.symbol));
 const PAGE_SIZE = 20;
 const time = value => new Date(value).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Seoul' });
 const won = n => '₩' + new Intl.NumberFormat('ko-KR', { maximumFractionDigits: n < 1 ? 5 : n < 100 ? 2 : 0 }).format(n);
 const volume = n => n >= 1e12 ? (n / 1e12).toFixed(2) + '조' : n >= 1e8 ? (n / 1e8).toFixed(1) + '억' : (n / 1e4).toFixed(0) + '만';
-function coinIcon(symbol) {
+function coinIcon(symbol, fallbackSymbol = symbol) {
   const safe = /^[A-Z0-9]{1,20}$/.test(symbol) ? symbol : '';
-  const fallback = escapeHTML(safe.slice(0, 1) || '?');
+  const fallback = escapeHTML(String(fallbackSymbol || '').slice(0, 1) || '?');
   if (!safe) return '<span class="coinicon coin-avatar" aria-hidden="true"><span class="coin-fallback">' + fallback + '</span></span>';
   return '<span class="coinicon coin-avatar" aria-hidden="true"><span class="coin-fallback">' + fallback + '</span><img src="https://static.upbit.com/logos/' + encodeURIComponent(safe) + '.png" alt="" width="29" height="29" loading="lazy" decoding="async" referrerpolicy="no-referrer" onload="this.parentElement.classList.add(\'loaded\')" onerror="this.parentElement.classList.remove(\'loaded\');this.remove()"></span>';
 }
@@ -104,27 +110,53 @@ function attentionDetail(symbol){
  modal('<div class="eyebrow">'+(attentionScope==='internal'?'ALTMOA COMMUNITY':'EXTERNAL COMMUNITY')+'</div><h2 class="coin-detail-heading">'+coinIcon(symbol)+escapeHTML(item.name)+' <span class="subtle">'+escapeHTML(symbol)+'</span></h2><p>선택한 기간에 '+Number(item.mentions)+'개의 중복 제외 언급 글이 관측됐어요.</p><p class="subtle">'+(item.growth==null?(attentionScope==='internal'?'내부 관심도는 언급 글 수를 제공합니다.':'평소 대비 급증률은 충분한 이력이 쌓인 뒤 표시합니다.'):'직전 7일의 같은 길이 기간 평균 대비 '+escapeHTML(item.growth)+'배입니다.')+'</p><ul class="attention-links">'+links+'</ul>');
 }
 async function loadMarket() {
-  if (marketBusy) return; marketBusy = true;
+  const exchange=$('marketexchange').value||selectedExchange;
+  if(marketBusy&&loadingExchange===exchange)return;
+  const requestId=++marketRequest;marketBusy=true;loadingExchange=exchange;
+  if(selectedExchange!==exchange){selectedExchange=exchange;coins=[];lastFetchedAt=null;marketFailed=false;$('coins').innerHTML='<tr><td colspan="6" class="loading">선택한 거래소 시세를 불러오고 있어요.</td></tr>';$('ticker').innerHTML='<span class="inline-status">시세 연결 중...</span>';$('marketbadge').textContent='연결 중';$('markettime').textContent='연결 중';}
   try {
-    const { data } = await fetchJSON('/api/market'); coins = data.coins; lastFetchedAt = data.fetchedAt; marketFailed = false;
-    $('marketbadge').textContent = 'UPBIT'; $('markettime').textContent = '업비트 · ' + time(data.fetchedAt) + ' KST 조회 · 60초마다 갱신';
-    $('globalstatus').textContent = '실제 시세 · 내부 관심도 집계 · 외부 연결 준비 중';
-    $('ticker').innerHTML = '<span style="color:var(--accent);font-weight:700">UPBIT · KRW</span>' + ['BTC', 'ETH', 'SOL', 'XRP'].map(symbol => { const c = coins.find(x => x.symbol === symbol); return c ? '<span class="ticker-coin">' + coinIcon(symbol) + '<b>' + symbol + '</b>' + won(c.price) + ' <span class="' + (c.change >= 0 ? 'up' : 'down') + '">' + (c.change >= 0 ? '+' : '') + c.change.toFixed(2) + '%</span></span>' : ''; }).join('') + '<span style="color:#94a0b2;font-size:10px">전일 종가 대비</span>';
-    renderCoins(); renderLounges();
+    const {data}=await fetchJSON('/api/market?exchange='+encodeURIComponent(exchange));if(requestId!==marketRequest)return;
+    if(!Array.isArray(data.coins)||!data.coins.length||(data.id&&data.id!==exchange))throw new Error('invalid_market');
+    coins=data.coins;lastFetchedAt=data.fetchedAt;marketFailed=false;
+    const meta=exchangeOptions.find(e=>e[0]===exchange);
+    marketInfo={id:exchange,name:data.name||meta[1],quote:data.currency||meta[3],source:data.source||exchange,changeLabel:data.changeLabel||'전일 종가 대비 (UTC)'};
+    $('marketbadge').textContent=marketInfo.source.toUpperCase();$('marketdescription').textContent=marketInfo.name+' · '+marketInfo.quote+' 현물 · 선택한 정렬 기준 상위 5개';
+    $('changebasis').textContent=marketInfo.changeLabel;$('changehead').textContent=exchange==='binance'?'24h 등락률':'전일 대비';
+    $('markettime').textContent=marketInfo.name+' · '+time(data.fetchedAt)+' KST 조회 · 60초마다 갱신';
+    $('globalstatus').textContent='실제 현물 시세 · 내부 관심도 집계 · 외부 연결 준비 중';
+    $('ticker').innerHTML='<span style="color:var(--accent);font-weight:700">'+escapeHTML(marketInfo.source.toUpperCase())+' · '+marketInfo.quote+'</span>'+['BTC','ETH','SOL','XRP'].map(symbol=>{const c=coins.find(x=>x.symbol===symbol);return c?'<span class="ticker-coin">'+coinIcon(c.iconSymbol===null?'':c.iconSymbol||symbol,symbol)+'<b>'+symbol+'</b>'+priceLabel(c.price,c.quote||marketInfo.quote)+' <span class="'+(c.change>=0?'up':'down')+'">'+(c.change>=0?'+':'')+c.change.toFixed(2)+'%</span></span>':''}).join('')+'<span class="inline-status">'+escapeHTML(marketInfo.changeLabel)+'</span>';
+    renderCoins();renderLounges();
   } catch {
-    marketFailed = true; $('marketbadge').textContent = '연결 지연'; $('markettime').innerHTML = coins.length ? '갱신 실패 · 마지막 성공: ' + escapeHTML(time(lastFetchedAt)) + ' KST (이전 데이터)' : '시세를 불러오지 못했어요. 새로고침으로 다시 시도하세요.';
-    if (!coins.length) { $('coins').innerHTML = '<tr><td colspan="6" class="empty">시세 제공처에 연결하지 못했습니다.</td></tr>'; $('ticker').innerHTML = '<span class="inline-status">시세 연결 지연 · 잠시 후 다시 시도합니다.</span>'; }
-    else $('ticker').innerHTML = '<span class="inline-status">시세 갱신 지연 · 마지막 조회 ' + escapeHTML(time(lastFetchedAt)) + ' KST</span>';
-    $('globalstatus').textContent = '시세 연결 지연 · 관심도 수집 준비 중';
-  } finally { marketBusy = false; }
+    if(requestId!==marketRequest)return;marketFailed=true;$('marketbadge').textContent='연결 지연';
+    $('markettime').textContent=coins.length?'갱신 실패 · 마지막 성공: '+time(lastFetchedAt)+' KST (이전 데이터)':'선택한 거래소에 연결하지 못했어요. 다른 거래소를 선택하거나 새로고침해 주세요.';
+    if(!coins.length){$('coins').innerHTML='<tr><td colspan="6" class="empty">선택한 거래소에 연결하지 못했습니다.</td></tr>';$('ticker').innerHTML='<span class="inline-status">선택한 거래소 시세 연결 지연</span>';}
+    else $('ticker').innerHTML='<span class="inline-status">시세 갱신 지연 · 마지막 조회 '+escapeHTML(time(lastFetchedAt))+' KST</span>';
+  } finally {if(requestId===marketRequest){marketBusy=false;loadingExchange=null;}}
+}
+function changeMarketRegion(){
+ const region=$('marketregion').value;
+ const options=exchangeOptions.filter(e=>region==='all'||e[2]===region);
+ const previous=$('marketexchange').value;
+ $('marketexchange').innerHTML=options.map(e=>'<option value="'+e[0]+'">'+e[1]+' · '+e[3]+'</option>').join('');
+ $('marketexchange').value=options.some(e=>e[0]===previous)?previous:options[0][0];loadMarket();
 }
 function renderCoins() {
-  const list = coins.filter(c => c.symbol !== 'BTC' && (!savedOnly || favorites.includes(c.symbol)) && (!query || (c.name + ' ' + c.symbol).toLowerCase().includes(query.toLowerCase()))).sort((a, b) => sort === 'change' ? b.change - a.change : b.volume24h - a.volume24h);
-  $('ranktitle').textContent = savedOnly ? '나의 관심 코인' : '알트코인 시세';
-  $('coins').innerHTML = list.slice(0, 5).map((c, i) => '<tr><td class="rank">' + (i + 1) + '</td><td><button class="coinline" onclick="detail(\'' + c.symbol + '\')">' + coinIcon(c.symbol) + '<span><b>' + escapeHTML(c.symbol) + '</b><small>' + escapeHTML(c.name) + '</small></span></button></td><td>' + won(c.price) + '</td><td class="' + (c.change >= 0 ? 'up' : 'down') + '">' + (c.change >= 0 ? '+' : '') + c.change.toFixed(2) + '%</td><td>' + volume(c.volume24h) + '원</td><td><button class="star ' + (favorites.includes(c.symbol) ? 'saved' : '') + '" onclick="star(\'' + c.symbol + '\')" aria-label="' + c.symbol + ' 관심 ' + (favorites.includes(c.symbol) ? '해제' : '저장') + '">' + (favorites.includes(c.symbol) ? '★' : '☆') + '</button></td></tr>').join('') || '<tr><td colspan="6" class="empty">' + (savedOnly ? '저장한 관심 코인이 없어요. ☆로 코인을 모아보세요.' : '검색 결과가 없습니다.') + '</td></tr>';
+  const list = coins.filter(c => c.symbol !== 'BTC' && (!savedOnly || isFavorite(c)) && (!query || (c.name + ' ' + c.symbol).toLowerCase().includes(query.toLowerCase()))).sort((a, b) => sort === 'change' ? b.change - a.change : b.volume24h - a.volume24h);
+  $('ranktitle').textContent = savedOnly ? '나의 관심 코인 · 선택 거래소' : '알트코인 시세';
+  $('coins').innerHTML = list.slice(0, 5).map((c, i) => '<tr><td class="rank">' + (i + 1) + '</td><td><button class="coinline" onclick="detail(\'' + c.symbol + '\')">' + coinIcon(c.iconSymbol === null ? '' : c.iconSymbol || c.symbol, c.symbol) + '<span><b>' + escapeHTML(c.symbol) + '</b><small>' + escapeHTML(c.name) + '</small></span></button></td><td>' + priceLabel(c.price,c.quote||marketInfo.quote) + '</td><td class="' + (c.change >= 0 ? 'up' : 'down') + '">' + (c.change >= 0 ? '+' : '') + c.change.toFixed(2) + '%</td><td>' + volume(c.volume24h) + ((c.quote||marketInfo.quote)==='USDT'?' '+(c.quote||marketInfo.quote):'원') + '</td><td><button class="star ' + (isFavorite(c) ? 'saved' : '') + '" onclick="star(\'' + c.symbol + '\')" aria-label="' + c.symbol + ' 관심 ' + (isFavorite(c) ? '해제' : '저장') + '">' + (isFavorite(c) ? '★' : '☆') + '</button></td></tr>').join('') || '<tr><td colspan="6" class="empty">' + (savedOnly ? '저장한 관심 코인이 없어요. ☆로 코인을 모아보세요.' : '검색 결과가 없습니다.') + '</td></tr>';
 }
-function star(symbol) { favorites = favorites.includes(symbol) ? favorites.filter(x => x !== symbol) : [...favorites, symbol]; store('altmoa-stars', favorites); renderCoins(); }
-function detail(symbol) { const c = coins.find(x => x.symbol === symbol); if (!c) return; modal('<div class="eyebrow">UPBIT · KRW' + (marketFailed ? ' · 이전 데이터' : '') + '</div><h2 class="coin-detail-heading">' + coinIcon(c.symbol) + escapeHTML(c.name) + ' <span class="subtle">' + escapeHTML(c.symbol) + '</span></h2><div class="detail-stats"><div><small>현재가</small><b style="font-size:16px">' + won(c.price) + '</b></div><div><small>전일 대비</small><b style="font-size:16px">' + (c.change >= 0 ? '+' : '') + c.change.toFixed(2) + '%</b></div><div><small>24h 거래대금</small><b style="font-size:16px">' + volume(c.volume24h) + '원</b></div></div><p class="subtle">조회: ' + escapeHTML(time(lastFetchedAt)) + ' KST · 외부 관심도는 아직 수집하지 않습니다.</p><button class="solid" onclick="document.getElementById(\'dialog\').close();lounge(\'' + c.symbol + '\')">' + c.symbol + ' 이야기 보기 →</button>'); }
+function star(symbol){const c=coins.find(x=>x.symbol===symbol);if(!c)return;const key=favoriteKey(c);favorites=isFavorite(c)?favorites.filter(x=>x!==key&&!(selectedExchange==='upbit'&&x===symbol)):[...favorites,key];store('altmoa-stars',favorites);renderCoins();}
+function detail(symbol){
+ const c=coins.find(x=>x.symbol===symbol);if(!c)return;const token=++detailRequest;
+ modal('<div class="eyebrow">'+escapeHTML(marketInfo.name)+' · '+escapeHTML(c.quote||marketInfo.quote)+' 현물'+(marketFailed?' · 이전 데이터':'')+'</div><h2 class="coin-detail-heading">'+coinIcon(c.iconSymbol===null?'':c.iconSymbol||symbol,symbol)+escapeHTML(c.name)+' <span class="subtle">'+escapeHTML(symbol)+'</span></h2><div class="detail-stats"><div><small>현재가</small><b style="font-size:15px">'+priceLabel(c.price,c.quote||marketInfo.quote)+'</b></div><div><small>'+escapeHTML(marketInfo.changeLabel)+'</small><b style="font-size:16px">'+(c.change>=0?'+':'')+c.change.toFixed(2)+'%</b></div><div><small>24h 거래대금</small><b style="font-size:15px">'+volume(c.volume24h)+' '+escapeHTML(c.quote||marketInfo.quote)+'</b></div></div><p class="subtle">조회 '+escapeHTML(time(lastFetchedAt))+' KST</p><div id="exchangecomparison"><p class="subtle">'+(c.assetId?'다른 거래소 시세를 불러오고 있어요.':'이 코인은 거래소 간 자산 연결을 아직 확인하지 않았습니다. 현재 거래소 시세만 표시합니다.')+'</p></div><button class="solid" onclick="document.getElementById(\'dialog\').close();lounge(\''+symbol+'\')">'+symbol+' 이야기 보기 →</button>');
+ if(c.assetId)loadComparison(c.assetId,token);
+}
+async function loadComparison(assetId,token){
+ try{
+  const {data}=await fetchJSON('/api/market?asset='+encodeURIComponent(assetId));if(token!==detailRequest||!$('exchangecomparison')||!$('dialog').open)return;
+  $('exchangecomparison').innerHTML='<h3 style="font-size:14px;margin-top:22px">거래소별 현물 시세</h3><div class="tablebox"><table><thead><tr><th>거래소</th><th>가격</th><th>원화 환산</th></tr></thead><tbody>'+data.comparisons.map(row=>'<tr><td>'+escapeHTML(row.exchangeName||row.name)+'</td><td>'+(row.status==='ready'?priceLabel(row.price,row.quote):row.status==='unlisted'?'거래 페어 없음':'연결 실패')+'</td><td>'+(row.status==='ready'&&Number.isFinite(row.convertedKrw)?won(row.convertedKrw):'—')+'</td></tr>').join('')+'</tbody></table></div><p class="subtle">'+(data.conversion?'USDT는 '+escapeHTML(data.conversion.source)+' '+won(data.conversion.rate)+' 기준 환산 · '+time(data.conversion.fetchedAt)+' KST. 법정 USD 환율과 다릅니다.':'USDT/KRW 환산 시세가 없어 원화 환산을 생략합니다.')+' 거래소별 조회 시점은 다를 수 있습니다.</p>';
+ }catch{if(token===detailRequest&&$('exchangecomparison'))$('exchangecomparison').innerHTML='<p class="subtle">거래소별 비교 시세를 불러오지 못했어요.</p>';}
+}
 function renderLounges() { const list = ['SUI', 'SOL', 'DOGE', 'XRP', 'SEI']; $('lounges').innerHTML = list.map(symbol => { const c = coins.find(x => x.symbol === symbol); return '<button onclick="lounge(\'' + symbol + '\')"><span>' + escapeHTML(c?.name || symbol) + '</span><small>' + symbol + '</small></button>'; }).join(''); $('topics').innerHTML = ['SUI', 'SOL', 'DOGE', 'PEPE', 'SEI', 'ONDO'].map(symbol => '<button onclick="lounge(\'' + symbol + '\')"># ' + symbol + '</button>').join(''); }
 async function loadPosts() {
   const requestId = ++feedRequest;
@@ -212,6 +244,7 @@ function navigate(section) {
 async function init() {
   renderLounges(); updateAuth();
   document.querySelectorAll('[data-attention-scope]').forEach(b => b.onclick = () => { attentionScope=b.dataset.attentionScope;document.querySelectorAll('[data-attention-scope]').forEach(x=>x.classList.toggle('on',x===b));loadAttention(); });
+  $('marketregion').onchange=changeMarketRegion; $('marketexchange').onchange=()=>loadMarket();
   $('attentionregion').onchange=loadAttention; $('attentionperiod').onchange=loadAttention;
   document.querySelectorAll('[data-nav],[data-side]').forEach(b => b.onclick = () => navigate(b.dataset.nav || b.dataset.side));
   document.querySelectorAll('[data-sort]').forEach(b => b.onclick = () => { sort = b.dataset.sort; document.querySelectorAll('[data-sort]').forEach(x => x.classList.toggle('on', x === b)); renderCoins(); });
