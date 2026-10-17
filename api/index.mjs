@@ -1,3 +1,4 @@
+import {runAIReplies} from '../lib/ai-replies.mjs';
 import {runAIPublisher,initializeAIWriters} from '../lib/ai-publisher.mjs';
 import {publicCommunity} from '../lib/public-community.mjs';
 import { EXCHANGES,fetchExchange,compareAsset,fetchConversion } from '../lib/exchanges.mjs';
@@ -38,4 +39,4 @@ export async function GET(request) {
   }
 }
 
-export async function POST(request){const url=new URL(request.url),route=url.searchParams.get('route')||url.pathname.replace(/^\/api\/?/,'');if(route==='ai-initialize')return initializeAIWriters(request);if(route==='ai-publish')return runAIPublisher(request);if(route==='ai')return createAIDraft(request);return json({error:'Not found'},404);}
+export async function POST(request){const url=new URL(request.url),route=url.searchParams.get('route')||url.pathname.replace(/^\/api\/?/,'');if(route==='ai-reply')return runAIReplies(request);if(route==='ai-initialize')return initializeAIWriters(request);if(route==='ai-publish')return runAIPublisher(request);if(route==='ai')return createAIDraft(request);return json({error:'Not found'},404);}

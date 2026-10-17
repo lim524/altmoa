@@ -228,23 +228,23 @@ async function loadPosts() {
   document.querySelectorAll('[data-tab]').forEach(button=>button.classList.toggle('on',button.dataset.tab===category));
 }
 function changePage(delta) { page = Math.max(0, page + delta);const params=new URLSearchParams(location.search);params.set('page',String(page+1));history.replaceState(history.state,'','/?'+params);loadPosts(); $('boardpanel').scrollIntoView({ behavior: 'smooth' }); }
-let postPageRequest=0;
+let postPageRequest=0,replyTargetId=null,currentThreadComments=[];
 async function openPost(id,options={}) {
   if(!validPostId(id)){toast('올바른 게시글 주소가 아닙니다.');navigate('board',{history:false});return;}
   if(navigate('post',{...options,id})===false)return;
-  const request=++postPageRequest;activePostId=id;
+  const request=++postPageRequest;activePostId=id;replyTargetId=null;currentThreadComments=[];
   $('postpagecontent').innerHTML='<p class="loading">이야기를 불러오고 있어요.</p>';
   if(!config?.communityReady){$('postpagecontent').textContent='커뮤니티 연결을 확인하고 있어요. 잠시 후 다시 시도해 주세요.';return;}
   try {
     const { data } = await db('posts?' + new URLSearchParams({ select: '*,profiles!posts_author_id_fkey(nickname)', id: 'eq.' + id, status: 'eq.published' }));
     if(activePostId!==id||request!==postPageRequest)return;
     const p = data[0]; if(!p){$('postpagecontent').textContent='삭제되었거나 숨김 처리된 게시글입니다.';return;}document.title=p.title+' — 알트모아';
-    $('postpagecontent').innerHTML='<div class="eyebrow">' + escapeHTML(p.category) + (p.coin ? ' · ' + escapeHTML(p.coin) : '') + '</div><h2>' + escapeHTML(p.title) + '</h2><p class="subtle">' + escapeHTML(p.profiles?.nickname || '알트모아 회원') + memberBadge(p.author_id) + ' · ' + time(p.created_at) + '</p><div class="postbody">' + escapeHTML(p.body) + '</div><div class="post-tags">'+renderTags(p.tags)+'</div><div id="postphotosview" class="post-photos"></div><section id="postpoll" class="post-poll"></section><div id="postrecommendation" class="post-recommendation"><p class="subtle">추천을 불러오는 중입니다.</p></div><div class="row-actions"><button onclick="reportItem(\'posts\',\'' + id + '\')">신고</button>' + (session?.user?.id === p.author_id ? '<button class="danger" onclick="deleteItem(\'posts\',\'' + id + '\')">내 글 삭제</button>' : '') + (moderator ? '<button class="danger" onclick="hideItem(\'posts\',\'' + id + '\')">운영자 숨김</button>' : '') + '</div><h3 style="font-size:14px;margin-top:26px">댓글</h3><div id="comments"><p class="subtle">불러오는 중...</p></div><form id="commentform"><label class="subtle" for="commentbody">함께 나눌 이야기</label><textarea id="commentbody" name="body" maxlength="2000" required style="height:80px" placeholder="' + (session?.user ? '댓글을 입력하세요' : '로그인 후 댓글을 남길 수 있어요') + '"></textarea><button class="solid" id="commentsubmit">댓글 등록</button><p id="commenterror" class="subtle" role="alert"></p></form>';
+    $('postpagecontent').innerHTML='<div class="eyebrow">' + escapeHTML(p.category) + (p.coin ? ' · ' + escapeHTML(p.coin) : '') + '</div><h2>' + escapeHTML(p.title) + '</h2><p class="subtle">' + escapeHTML(p.profiles?.nickname || '알트모아 회원') + memberBadge(p.author_id) + ' · ' + time(p.created_at) + '</p><div class="postbody">' + escapeHTML(p.body) + '</div><div class="post-tags">'+renderTags(p.tags)+'</div><div id="postphotosview" class="post-photos"></div><section id="postpoll" class="post-poll"></section><div id="postrecommendation" class="post-recommendation"><p class="subtle">추천을 불러오는 중입니다.</p></div><div class="row-actions"><button onclick="reportItem(\'posts\',\'' + id + '\')">신고</button>' + (session?.user?.id === p.author_id ? '<button class="danger" onclick="deleteItem(\'posts\',\'' + id + '\')">내 글 삭제</button>' : '') + (moderator ? '<button class="danger" onclick="hideItem(\'posts\',\'' + id + '\')">운영자 숨김</button>' : '') + '</div><h3 style="font-size:14px;margin-top:26px">댓글</h3><div id="comments"><p class="subtle">불러오는 중...</p></div><form id="commentform"><div id="replytarget" hidden><span id="replytargetlabel"></span> <button type="button" onclick="cancelCommentReply()">취소</button></div><label class="subtle" for="commentbody">함께 나눌 이야기</label><textarea id="commentbody" name="body" maxlength="2000" required style="height:80px" placeholder="' + (session?.user ? '댓글을 입력하세요' : '로그인 후 댓글을 남길 수 있어요') + '"></textarea><button class="solid" id="commentsubmit">댓글 등록</button><p id="commenterror" class="subtle" role="alert"></p></form>';
     let commentBusy=false;
     $('commentform').onsubmit = async event => {
       event.preventDefault();if(commentBusy||activePostId!==id||request!==postPageRequest)return; if (!session?.user) return authModal();
       const body=String(new FormData(event.target).get('body')||'').trim();if(body.length<1||body.length>2000){$('commenterror').textContent='댓글은 1~2000자로 입력하세요.';return;}const button=$('commentsubmit');commentBusy=true;button.disabled=true;
-      try { await db('comments', { method: 'POST', body: JSON.stringify({ post_id: id, author_id: session.user.id, body }) }); if (activePostId === id) { $('commentbody').value = ''; await loadComments(id); } loadPosts(); }
+      try { await db('comments', { method: 'POST', body: JSON.stringify({ post_id: id, author_id: session.user.id, body, parent_comment_id:replyTargetId }) }); if (activePostId === id&&request===postPageRequest) { $('commentbody').value = '';cancelCommentReply();await loadComments(id); } loadPosts(); }
       catch (error) { if(activePostId===id&&request===postPageRequest&&$('commenterror')) $('commenterror').textContent = errorMessage(error); }
       finally { commentBusy=false;if (button.isConnected) button.disabled = false; }
     };
@@ -252,12 +252,21 @@ async function openPost(id,options={}) {
     await Promise.all([loadComments(id),loadPostRecommendation(id,p.author_id),loadPostPhotos(p.images,id),loadPoll(p)]);
   } catch (error) { if(activePostId===id&&request===postPageRequest)$('postpagecontent').textContent='이야기를 불러오지 못했어요. '+errorMessage(error); }
 }
+function cancelCommentReply(){replyTargetId=null;if($('replytarget'))$('replytarget').hidden=true;}
+function replyToComment(id){const c=currentThreadComments.find(c=>c.id===id);if(!c||!validPostId(id)||activeView!=='post')return;replyTargetId=id;$('replytarget').hidden=false;$('replytargetlabel').textContent=(c.profiles?.nickname||'알트모아 회원')+'님에게 답글';$('commentbody').focus?.();$('commentform').scrollIntoView({behavior:'smooth',block:'center'});}
+function renderCommentThread(data,id){
+ const byId=new Map(data.map(c=>[c.id,c])),children=new Map(),visited=new Set();
+ data.forEach(c=>{const key=byId.has(c.parent_comment_id)?c.parent_comment_id:null;if(!children.has(key))children.set(key,[]);children.get(key).push(c);});
+ function row(c,depth){if(visited.has(c.id))return '';visited.add(c.id);return '<div class="comment'+(depth?' comment-reply':'')+'" style="margin-left:'+Math.min(depth,3)*14+'px"><small>' + escapeHTML(c.profiles?.nickname || '알트모아 회원') + memberBadge(c.author_id) + ' · ' + time(c.created_at) + '</small>'+((c.parent_comment_id&&!byId.has(c.parent_comment_id))?'<small class="subtle">원댓글이 삭제되었거나 표시 범위 밖에 있습니다.</small>':'')+'<p>' + escapeHTML(c.body) + '</p><div class="row-actions"><button onclick="replyToComment(\''+c.id+'\')">답글</button><button onclick="reportItem(\'comments\',\'' + c.id + '\')">신고</button>' + (session?.user?.id === c.author_id ? '<button onclick="deleteItem(\'comments\',\'' + c.id + '\',\'' + id + '\')">삭제</button>' : '') + (moderator ? '<button onclick="hideItem(\'comments\',\'' + c.id + '\',\'' + id + '\')">숨김</button>' : '') + '</div></div>'+(children.get(c.id)||[]).map(child=>row(child,depth+1)).join('');}
+ return [...(children.get(null)||[]),...data].map(c=>row(c,0)).join('');
+}
 async function loadComments(id) {
   const request=postPageRequest;
   try {
-    const { data } = await db('comments?' + new URLSearchParams({ select: 'id,author_id,body,created_at,profiles!comments_author_id_fkey(nickname)', post_id: 'eq.' + id, status: 'eq.published', order: 'created_at.asc', limit: '200' }));
+    const { data } = await db('comments?' + new URLSearchParams({ select: 'id,author_id,parent_comment_id,body,created_at,profiles!comments_author_id_fkey(nickname)', post_id: 'eq.' + id, status: 'eq.published', order: 'created_at.asc', limit: '200' }));
     if (activePostId !== id || request!==postPageRequest || !$('comments')) return;
-    $('comments').innerHTML = data.map(c => '<div class="comment"><small>' + escapeHTML(c.profiles?.nickname || '알트모아 회원') + memberBadge(c.author_id) + ' · ' + time(c.created_at) + '</small><p>' + escapeHTML(c.body) + '</p><div class="row-actions"><button onclick="reportItem(\'comments\',\'' + c.id + '\')">신고</button>' + (session?.user?.id === c.author_id ? '<button onclick="deleteItem(\'comments\',\'' + c.id + '\',\'' + id + '\')">삭제</button>' : '') + (moderator ? '<button onclick="hideItem(\'comments\',\'' + c.id + '\',\'' + id + '\')">숨김</button>' : '') + '</div></div>').join('') || '<p class="subtle">첫 댓글을 남겨보세요.</p>';
+    currentThreadComments=data;$('comments').innerHTML=renderCommentThread(data,id)||'<p class="subtle">첫 댓글을 남겨보세요.</p>';
+    if(replyTargetId&&!data.some(c=>c.id===replyTargetId))cancelCommentReply();
     loadMemberBadges(data.map(comment=>comment.author_id));
     if (data.length === 200) $('comments').insertAdjacentHTML('beforeend', '<p class="subtle">댓글은 먼저 작성된 200개까지 표시합니다.</p>');
   } catch (error) { if (activePostId === id && request===postPageRequest && $('comments')) $('comments').textContent = errorMessage(error); }

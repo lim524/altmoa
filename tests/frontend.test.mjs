@@ -168,3 +168,14 @@ test('rapid clicks on different poll options send only one vote',async()=>{
  const id='00000000-0000-0000-0000-000000000001';let calls=0,complete;const f=fixture(async(url,options)=>{if(String(url).endsWith('/poll_votes')){calls++;return new Promise(resolve=>complete=resolve);}return Response.json([])});configure(f);f.node('poll0').dataset={pollOption:'0'};f.node('poll1').dataset={pollOption:'1'};f.run(`activePostId='${id}';activeView='post'`);await f.run(`loadPoll({id:'${id}',poll_question:'어떤 선택?',poll_options:['첫째','둘째']})`);
  const first=f.node('poll0').onclick();await new Promise(r=>setImmediate(r));await f.node('poll1').onclick();assert.equal(calls,1);assert.equal(f.node('poll1').disabled,true);complete(new Response(null,{status:201}));await first;
 });
+
+test('comment threads preserve reply parents, escape content and tolerate missing parents',()=>{
+ const f=fixture(async()=>Response.json([]));configure(f);
+ const html=f.run(`renderCommentThread([{id:'child',author_id:'other',parent_comment_id:'root',body:'<img src=x>',profiles:{nickname:'<svg>'}},{id:'root',author_id:'other',body:'원댓글'},{id:'orphan',parent_comment_id:'deleted',body:'남은 답글'}],'post')`);
+ assert.ok(html.indexOf('원댓글')<html.indexOf('&lt;img'));assert.doesNotMatch(html,/<img|<svg/);assert.match(html,/comment-reply/);assert.match(html,/원댓글이 삭제/);assert.match(html,/replyToComment/);
+});
+
+test('human reply submission includes selected parent and clears reply mode only after saving',async()=>{
+ const id='00000000-0000-0000-0000-000000000001',parent='00000000-0000-0000-0000-000000000002';let sent;
+ const f=fixture(async(url,options)=>{if(options.method==='POST'){sent=JSON.parse(options.body);return new Response(null,{status:201});}const u=new URL(url);return Response.json(u.searchParams.get('select')?.startsWith('*')?[{id,title:'대댓글 검사',body:'본문',category:'자유',author_id:'other'}]:u.pathname.endsWith('/comments')?[{id:parent,body:'원댓글',author_id:'other',profiles:{nickname:'작성자'}}]:[])});configure(f);await f.run(`openPost('${id}')`);f.run(`replyToComment('${parent}')`);assert.equal(f.node('replytarget').hidden,false);await f.node('commentform').onsubmit({preventDefault(){},target:{body:'사람이 작성한 답글'}});assert.equal(sent.parent_comment_id,parent);assert.equal(f.run('replyTargetId'),null);
+});
