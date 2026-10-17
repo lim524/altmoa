@@ -37,3 +37,10 @@
 - https://support.google.com/adsense/answer/13554116
 - https://vercel.com/docs/analytics/quickstart
 - https://vercel.com/docs/speed-insights/quickstart
+
+## 2026-10-17 운영 반영
+- 실제 대표 주소 `https://www.altmoa.com`, `altmoa.com`은 308로 www에 연결. Production/Preview/Development SITE_URL 반영.
+- 무료 Hobby Web Analytics를 운영자가 로그인한 Vercel 화면에서 활성화한 뒤 재배포. Plus 업그레이드는 미구매.
+- 운영 DB의 추천·활동 구조는 이미 존재함을 확인. 기존 정책을 삭제·교체하는 통합 마이그레이션 대신 `supabase/add-community-features.sql`의 추가 전용 트랜잭션을 적용. 기존 데이터와 정책을 보존하며 신규 태그·사진·투표·문의 구조만 생성. 이 파일은 기존 객체를 덮어쓰지 않으므로 이미 적용한 운영 DB에 다시 실행할 필요가 없음.
+
+- Supabase Auth Site URL의 localhost 기본값을 `https://www.altmoa.com/`으로 수정하고 동일한 인증 반환 URL을 추가. 기존 Vercel 반환 URL은 보존. 회원 권한의 실제 운영 DB INSERT를 트랜잭션에서 검사한 뒤 롤백하여 테스트 게시물은 남기지 않음.

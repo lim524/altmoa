@@ -12,3 +12,8 @@ Final prompt:
 
 ## Vercel telemetry clients
 Official npm packages `@vercel/analytics` 2.0.1 and `@vercel/speed-insights` 2.0.0, retrieved 2026-10-17 from registry.npmjs.org. Browser ESM clients in `dist/vendor`, corresponding MIT licenses alongside. Source-map files omitted; executable SDK code otherwise unmodified. No analytics account, paid plan or dashboard toggle is created by including these clients.
+
+## Symbol-only favicon (2026-10-17)
+Built-in image generation edit, using `dist/assets/altmoa-logo.png` as the edit target. Selected transparent square master: `dist/assets/altmoa-symbol.png`. ImageMagick performed only favicon size/format conversion (16/32/48 ICO, 32/48 PNG, 180px Apple icon).
+
+Final edit prompt: "Use case: background-extraction. Edit target: the supplied Altmoa logo. Extract ONLY the existing blue/cyan/purple three-person triangular symbol located to the LEFT of the Korean lettering. Remove ALL lettering completely. Preserve the symbol's exact three circular heads, interlocking rounded shapes, proportions, orientation and blue/cyan/purple gradient colors; do not redesign. Output one clean square favicon master with genuine transparent background, symbol centered and occupying about 86% of canvas width, crisp clean silhouette, no glow, no shadow, no text, no extra elements."
