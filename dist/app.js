@@ -239,7 +239,7 @@ async function openPost(id,options={}) {
     const { data } = await db('posts?' + new URLSearchParams({ select: '*,profiles!posts_author_id_fkey(nickname)', id: 'eq.' + id, status: 'eq.published' }));
     if(activePostId!==id||request!==postPageRequest)return;
     const p = data[0]; if(!p){$('postpagecontent').textContent='삭제되었거나 숨김 처리된 게시글입니다.';return;}document.title=p.title+' — 알트모아';
-    $('postpagecontent').innerHTML='<div class="eyebrow">' + escapeHTML(p.category) + (p.coin ? ' · ' + escapeHTML(p.coin) : '') + '</div><h2>' + escapeHTML(p.title) + '</h2><p class="subtle">' + escapeHTML(p.profiles?.nickname || '알트모아 회원') + memberBadge(p.author_id) + ' · ' + time(p.created_at) + '</p><div class="postbody">' + escapeHTML(p.body) + '</div><div class="post-tags">'+renderTags(p.tags)+'</div><div id="postphotosview" class="post-photos"></div><section id="postpoll" class="post-poll"></section><div id="postrecommendation" class="post-recommendation"><p class="subtle">추천을 불러오는 중입니다.</p></div><div class="row-actions"><button onclick="reportItem(\'posts\',\'' + id + '\')">신고</button>' + (session?.user?.id === p.author_id ? '<button class="danger" onclick="deleteItem(\'posts\',\'' + id + '\')">내 글 삭제</button>' : '') + (moderator ? '<button class="danger" onclick="hideItem(\'posts\',\'' + id + '\')">운영자 숨김</button>' : '') + '</div><h3 style="font-size:14px;margin-top:26px">댓글</h3><div id="comments"><p class="subtle">불러오는 중...</p></div><form id="commentform"><div id="replytarget" hidden><span id="replytargetlabel"></span> <button type="button" onclick="cancelCommentReply()">취소</button></div><label class="subtle" for="commentbody">함께 나눌 이야기</label><textarea id="commentbody" name="body" maxlength="2000" required style="height:80px" placeholder="' + (session?.user ? '댓글을 입력하세요' : '로그인 후 댓글을 남길 수 있어요') + '"></textarea><button class="solid" id="commentsubmit">댓글 등록</button><p id="commenterror" class="subtle" role="alert"></p></form>';
+    $('postpagecontent').innerHTML='<div class="eyebrow">' + escapeHTML(p.category) + (p.coin ? ' · ' + escapeHTML(p.coin) : '') + '</div><h2>' + escapeHTML(p.title) + '</h2><p class="subtle">' + escapeHTML(p.profiles?.nickname || '알트모아 회원') + memberBadge(p.author_id) + ' · ' + time(p.created_at) + '</p><div class="postbody">' + escapeHTML(p.body) + '</div><div class="post-tags">'+renderTags(p.tags)+'</div><div id="postphotosview" class="post-photos"></div><section id="postpoll" class="post-poll"></section><div id="postrecommendation" class="post-recommendation"><p class="subtle">추천을 불러오는 중입니다.</p></div><div class="row-actions"><button onclick="reportItem(\'posts\',\'' + id + '\')">신고</button>' + (session?.user?.id === p.author_id && !moderator ? '<button class="danger" onclick="deleteItem(\'posts\',\'' + id + '\')">내 글 삭제</button>' : '') + (moderator ? '<button onclick="editPost(\''+id+'\')">운영자 수정</button><button class="danger" onclick="deleteItem(\'posts\',\''+id+'\')">운영자 삭제</button><button class="danger" onclick="hideItem(\'posts\',\'' + id + '\')">운영자 숨김</button>' : '') + '</div><h3 style="font-size:14px;margin-top:26px">댓글</h3><div id="comments"><p class="subtle">불러오는 중...</p></div><form id="commentform"><div id="replytarget" hidden><span id="replytargetlabel"></span> <button type="button" onclick="cancelCommentReply()">취소</button></div><label class="subtle" for="commentbody">함께 나눌 이야기</label><textarea id="commentbody" name="body" maxlength="2000" required style="height:80px" placeholder="' + (session?.user ? '댓글을 입력하세요' : '로그인 후 댓글을 남길 수 있어요') + '"></textarea><button class="solid" id="commentsubmit">댓글 등록</button><p id="commenterror" class="subtle" role="alert"></p></form>';
     let commentBusy=false;
     $('commentform').onsubmit = async event => {
       event.preventDefault();if(commentBusy||activePostId!==id||request!==postPageRequest)return; if (!session?.user) return authModal();
@@ -257,7 +257,7 @@ function replyToComment(id){const c=currentThreadComments.find(c=>c.id===id);if(
 function renderCommentThread(data,id){
  const byId=new Map(data.map(c=>[c.id,c])),children=new Map(),visited=new Set();
  data.forEach(c=>{const key=byId.has(c.parent_comment_id)?c.parent_comment_id:null;if(!children.has(key))children.set(key,[]);children.get(key).push(c);});
- function row(c,depth){if(visited.has(c.id))return '';visited.add(c.id);return '<div class="comment'+(depth?' comment-reply':'')+'" style="margin-left:'+Math.min(depth,3)*14+'px"><small>' + escapeHTML(c.profiles?.nickname || '알트모아 회원') + memberBadge(c.author_id) + ' · ' + time(c.created_at) + '</small>'+((c.parent_comment_id&&!byId.has(c.parent_comment_id))?'<small class="subtle">원댓글이 삭제되었거나 표시 범위 밖에 있습니다.</small>':'')+'<p>' + escapeHTML(c.body) + '</p><div class="row-actions"><button onclick="replyToComment(\''+c.id+'\')">답글</button><button onclick="reportItem(\'comments\',\'' + c.id + '\')">신고</button>' + (session?.user?.id === c.author_id ? '<button onclick="deleteItem(\'comments\',\'' + c.id + '\',\'' + id + '\')">삭제</button>' : '') + (moderator ? '<button onclick="hideItem(\'comments\',\'' + c.id + '\',\'' + id + '\')">숨김</button>' : '') + '</div></div>'+(children.get(c.id)||[]).map(child=>row(child,depth+1)).join('');}
+ function row(c,depth){if(visited.has(c.id))return '';visited.add(c.id);return '<div class="comment'+(depth?' comment-reply':'')+'" style="margin-left:'+Math.min(depth,3)*14+'px"><small>' + escapeHTML(c.profiles?.nickname || '알트모아 회원') + memberBadge(c.author_id) + ' · ' + time(c.created_at) + '</small>'+((c.parent_comment_id&&!byId.has(c.parent_comment_id))?'<small class="subtle">원댓글이 삭제되었거나 표시 범위 밖에 있습니다.</small>':'')+'<p>' + escapeHTML(c.body) + '</p><div class="row-actions"><button onclick="replyToComment(\''+c.id+'\')">답글</button><button onclick="reportItem(\'comments\',\'' + c.id + '\')">신고</button>' + (session?.user?.id === c.author_id || moderator ? '<button onclick="deleteItem(\'comments\',\'' + c.id + '\',\'' + id + '\')">삭제</button>' : '') + (moderator ? '<button onclick="hideItem(\'comments\',\'' + c.id + '\',\'' + id + '\')">숨김</button>' : '') + '</div></div>'+(children.get(c.id)||[]).map(child=>row(child,depth+1)).join('');}
  return [...(children.get(null)||[]),...data].map(c=>row(c,0)).join('');
 }
 async function loadComments(id) {
@@ -296,6 +296,25 @@ function writePost(options={}) {
   };
 }
 
+async function editPost(id){
+ if(!moderator||!session?.user||!validPostId(id))return;
+ const userId=session.user.id,request=postPageRequest;
+ try{
+  const {data}=await db('posts?'+new URLSearchParams({select:'id,title,body',id:'eq.'+id}));
+  if(!moderator||session?.user?.id!==userId||request!==postPageRequest||activePostId!==id)return;
+  const post=data[0];if(!post)return toast('게시글을 찾을 수 없습니다.');
+  modal('<h2>운영자 글 수정</h2><form id="editpostform"><label>제목<input name="title" minlength="2" maxlength="100" required value="'+escapeHTML(post.title)+'"></label><label>본문<textarea name="body" minlength="2" maxlength="10000" required style="min-height:240px">'+escapeHTML(post.body)+'</textarea></label><button class="solid" id="editpostsave">수정 저장</button><p id="editposterror" role="alert"></p></form>');
+  let busy=false;$('editpostform').onsubmit=async event=>{
+   event.preventDefault();if(busy||!moderator||session?.user?.id!==userId)return;
+   const form=new FormData(event.target),title=String(form.get('title')||'').trim(),body=String(form.get('body')||'').trim();
+   if(title.length<2||title.length>100||body.length<2||body.length>10000){$('editposterror').textContent='제목은 2~100자, 본문은 2~10000자로 입력하세요.';return;}
+   busy=true;const button=$('editpostsave');button.disabled=true;
+   try{const {data}=await db('rpc/moderator_edit_post',{method:'POST',body:JSON.stringify({p_id:id,p_title:title,p_body:body})});if(data!==id)throw Error('수정 권한이 없거나 게시글이 삭제되었습니다.');$('dialog').close();toast('글을 수정했어요.');if(activePostId===id)await openPost(id,{history:false});loadPosts();loadAttention();}
+   catch(error){if($('editposterror'))$('editposterror').textContent=errorMessage(error);}
+   finally{busy=false;if(button.isConnected)button.disabled=false;}
+  };
+ }catch(error){toast(errorMessage(error));}
+}
 function validContentTarget(table,id){return ['posts','comments'].includes(table)&&validPostId(id);}
 function deleteItem(table, id, postId = '') {
   if(!validContentTarget(table,id)||!session?.user)return;

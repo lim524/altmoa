@@ -179,3 +179,14 @@ test('human reply submission includes selected parent and clears reply mode only
  const id='00000000-0000-0000-0000-000000000001',parent='00000000-0000-0000-0000-000000000002';let sent;
  const f=fixture(async(url,options)=>{if(options.method==='POST'){sent=JSON.parse(options.body);return new Response(null,{status:201});}const u=new URL(url);return Response.json(u.searchParams.get('select')?.startsWith('*')?[{id,title:'대댓글 검사',body:'본문',category:'자유',author_id:'other'}]:u.pathname.endsWith('/comments')?[{id:parent,body:'원댓글',author_id:'other',profiles:{nickname:'작성자'}}]:[])});configure(f);await f.run(`openPost('${id}')`);f.run(`replyToComment('${parent}')`);assert.equal(f.node('replytarget').hidden,false);await f.node('commentform').onsubmit({preventDefault(){},target:{body:'사람이 작성한 답글'}});assert.equal(sent.parent_comment_id,parent);assert.equal(f.run('replyTargetId'),null);
 });
+
+test('only moderators can edit posts and saving preserves the target with bounded input',async()=>{
+ const id='00000000-0000-0000-0000-000000000001';let calls=0,sent;
+ const f=fixture(async(url,options)=>{calls++;if(String(url).includes('moderator_edit_post')){sent=JSON.parse(options.body);return Response.json(id);}return Response.json([{id,title:'원래 제목',body:'원래 본문'}])});configure(f);
+ await f.run(`editPost('${id}')`);assert.equal(calls,0);
+ f.run(`moderator=true;activePostId='${id}'`);await f.run(`editPost('${id}')`);assert.match(f.node('modalcontent').innerHTML,/운영자 글 수정/);
+ await f.node('editpostform').onsubmit({preventDefault(){},target:{title:' ',body:'본문'}});assert.equal(sent,undefined);
+ f.run('openPost=async()=>{};loadPosts=()=>{};loadAttention=()=>{}');
+ await f.node('editpostform').onsubmit({preventDefault(){},target:{title:'수정 제목',body:'수정한 본문입니다'}});
+ assert.equal(sent.p_id,id);assert.equal(sent.p_title,'수정 제목');assert.equal(sent.p_body,'수정한 본문입니다');assert.equal(Object.keys(sent).length,3);
+});
