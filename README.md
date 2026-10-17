@@ -111,3 +111,13 @@ API 응답 변환·오류 처리·공개키 제한, 프런트엔드 상태 흐�
 다크 모드에서는 별도로 생성한 `dist/assets/altmoa-logo-dark.png`를 사용합니다. 낮 모드 로고는 그대로 유지합니다. 로고 생성 정보는 `ASSET_SOURCES.md`에 기록했습니다.
 
 AI 캐릭터 10개의 설정과 운영자 전용 초안 기능은 [AI_COMMUNITY_SETUP.md](AI_COMMUNITY_SETUP.md)를 참고하세요. 자동 게시와 계좌 연결은 포함하지 않습니다.
+
+## 차트 상태 요약
+
+시세 페이지의 현재 페이지에 표시된 코인과 코인 상세 창에서 추세·RSI(14)·거래량 배수를 확인할 수 있습니다. 기본은 1시간봉이며 4시간봉·UTC 일봉으로 전환할 수 있습니다. 선택 거래소의 호가·가격과 별개로 **바이낸스 USDT 현물** 기준임을 표시합니다. 다른 거래소 자산은 명시적 ASSETS 목록으로 자산 동일성이 확인된 경우만 연결하고, 미확인 자산이나 미상장·데이터 부족·연결 실패는 구분해 표시합니다.
+
+`GET /api/technical?symbol=SUI&interval=1h`는 공개 캔들 API에서 최근 최대 250개 봉을 가져옵니다. 진행 중인 봉을 제외하고 마지막 완료 봉 종가와 SMA20/SMA60의 정렬, Wilder 방식 14봉 RSI, 마지막 완료 봉 거래량/그 이전 20개 완료 봉 평균을 계산합니다. 평탄한 시세의 RSI는 50, 기준 거래량이 모두 0인 배수는 미정으로 표시합니다. 60개 미만이거나 누락·오래된 봉은 정상 지표로 표시하지 않습니다. 새로 상장된 자산은 충분한 봉이 쌓여야 합니다. RSI 초기 구간은 조회된 캔들 안에서 평균으로 초기화하므로 다른 서비스의 전체 이력 계산과 미세하게 다를 수 있습니다.
+
+각 지표에는 마지막 완료 봉 시각을 표시합니다. 60초 서버 메모리 캐시(최대 128개 키)와 CDN 캐시를 사용하며, 현재 페이지의 최대 5개 코인만 조회합니다. 추가 AI API 호출이나 유료 데이터 키는 사용하지 않습니다. 숫자는 관측 상태이며 매수·매도 신호나 수익 확률로 변환하지 않습니다.
+
+자료: [Binance Spot Klines](https://github.com/binance/binance-spot-api-docs/blob/master/rest-api.md#klinecandlestick-data), [Wilder RSI 계산](https://www.tradingview.com/support/solutions/43000502338-relative-strength-index-rsi/).

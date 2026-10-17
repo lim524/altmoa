@@ -156,7 +156,7 @@ async function loadMarket(exchange=selectedExchange) {
   document.querySelectorAll('[data-exchange]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.exchange===exchange)));
   if(marketBusy&&loadingExchange===exchange)return;
   const requestId=++marketRequest;marketBusy=true;loadingExchange=exchange;
-  if(selectedExchange!==exchange){selectedExchange=exchange;marketPage=0;$('marketpagination').innerHTML='';coins=[];lastFetchedAt=null;marketFailed=false;$('coins').innerHTML='<tr><td colspan="6" class="loading">선택한 거래소 시세를 불러오고 있어요.</td></tr>';$('ticker').innerHTML='<span class="inline-status">시세 연결 중...</span>';$('marketbadge').textContent='연결 중';$('markettime').textContent='연결 중';}
+  if(selectedExchange!==exchange){selectedExchange=exchange;technicalRequest++;$('technicalrows').innerHTML='';marketPage=0;$('marketpagination').innerHTML='';coins=[];lastFetchedAt=null;marketFailed=false;$('coins').innerHTML='<tr><td colspan="6" class="loading">선택한 거래소 시세를 불러오고 있어요.</td></tr>';$('ticker').innerHTML='<span class="inline-status">시세 연결 중...</span>';$('marketbadge').textContent='연결 중';$('markettime').textContent='연결 중';}
   try {
     const [{data}]=await Promise.all([fetchJSON('/api/market?exchange='+encodeURIComponent(exchange)),loadConversion()]);if(requestId!==marketRequest)return;
     if(!Array.isArray(data.coins)||!data.coins.length||(data.id&&data.id!==exchange))throw new Error('invalid_market');
@@ -172,7 +172,7 @@ async function loadMarket(exchange=selectedExchange) {
   } catch {
     if(requestId!==marketRequest)return;marketFailed=true;$('marketbadge').textContent='연결 지연';
     $('markettime').textContent=coins.length?'갱신 실패 · 마지막 성공: '+time(lastFetchedAt)+' KST (이전 데이터)':'선택한 거래소에 연결하지 못했어요. 다른 거래소를 선택하거나 새로고침해 주세요.';
-    if(!coins.length){$('marketpagination').innerHTML='';$('coins').innerHTML='<tr><td colspan="6" class="empty">선택한 거래소에 연결하지 못했습니다.</td></tr>';$('ticker').innerHTML='<span class="inline-status">선택한 거래소 시세 연결 지연</span>';}
+    if(!coins.length){technicalRequest++;$('technicalrows').innerHTML='<p class="subtle">시세 연결 후 지표를 표시합니다.</p>';$('marketpagination').innerHTML='';$('coins').innerHTML='<tr><td colspan="6" class="empty">선택한 거래소에 연결하지 못했습니다.</td></tr>';$('ticker').innerHTML='<span class="inline-status">선택한 거래소 시세 연결 지연</span>';}
     else $('ticker').innerHTML='<span class="inline-status">시세 갱신 지연 · 마지막 조회 '+escapeHTML(time(lastFetchedAt))+' KST</span>';
   } finally {if(requestId===marketRequest){marketBusy=false;loadingExchange=null;}}
 }
@@ -185,6 +185,7 @@ function renderCoins() {
   const offset=marketPage*MARKET_PAGE_SIZE;
   $('ranktitle').textContent = savedOnly ? '나의 관심 코인 · 선택 거래소' : '알트코인 시세';
   $('coins').innerHTML = list.slice(offset, offset+MARKET_PAGE_SIZE).map((c, i) => '<tr><td class="rank">' + (offset+i+1) + '</td><td><button class="coinline" onclick="detail(\'' + c.symbol + '\')">' + coinIcon(c.iconSymbol === null ? '' : c.iconSymbol || c.symbol, c.symbol,c.logoUrl) + '<span><b>' + escapeHTML(c.symbol) + '</b><small>' + escapeHTML(c.name) + '</small></span></button></td><td>' + displayCoinPrice(c) + '</td><td class="' + (c.change >= 0 ? 'up' : 'down') + '">' + (c.change >= 0 ? '+' : '') + c.change.toFixed(2) + '%</td><td>' + displayCoinVolume(c) + '</td><td><button class="star ' + (isFavorite(c) ? 'saved' : '') + '" onclick="star(\'' + c.symbol + '\')" aria-label="' + c.symbol + ' 관심 ' + (isFavorite(c) ? '해제' : '저장') + '">' + (isFavorite(c) ? '★' : '☆') + '</button></td></tr>').join('') || '<tr><td colspan="6" class="empty">' + (savedOnly ? '저장한 관심 코인이 없어요. ☆로 코인을 모아보세요.' : '검색 결과가 없습니다.') + '</td></tr>';
+  loadPageTechnicals(list.slice(offset,offset+MARKET_PAGE_SIZE));
   if(!list.length){$('marketpagination').innerHTML='';return;}
   const start=Math.max(0,Math.min(marketPage-2,pages-5));
   const numbers=Array.from({length:Math.min(5,pages)},(_,i)=>start+i);
@@ -195,7 +196,8 @@ function goMarketPage(index){if(!Number.isInteger(index)||marketBusy)return;mark
 function star(symbol){const c=coins.find(x=>x.symbol===symbol);if(!c)return;const key=favoriteKey(c);favorites=isFavorite(c)?favorites.filter(x=>x!==key&&!(selectedExchange==='upbit'&&x===symbol)):[...favorites,key];store('altmoa-stars',favorites);renderCoins();}
 function detail(symbol){
  const c=coins.find(x=>x.symbol===symbol);if(!c)return;const token=++detailRequest;
- modal('<div class="eyebrow">'+escapeHTML(marketInfo.name)+' · '+escapeHTML(c.quote||marketInfo.quote)+' 현물'+(marketFailed?' · 이전 데이터':'')+'</div><h2 class="coin-detail-heading">'+coinIcon(c.iconSymbol===null?'':c.iconSymbol||symbol,symbol,c.logoUrl)+escapeHTML(c.name)+' <span class="subtle">'+escapeHTML(symbol)+'</span></h2><div class="detail-stats"><div><small>현재가</small><b style="font-size:15px">'+displayCoinPrice(c)+'</b></div><div><small>'+escapeHTML(marketInfo.changeLabel)+'</small><b style="font-size:16px">'+(c.change>=0?'+':'')+c.change.toFixed(2)+'%</b></div><div><small>24h 거래대금</small><b style="font-size:15px">'+displayCoinVolume(c)+'</b></div></div><p class="subtle">조회 '+escapeHTML(time(lastFetchedAt))+' KST</p><div id="exchangecomparison"><p class="subtle">'+(c.assetId?'다른 거래소 시세를 불러오고 있어요.':'이 코인은 거래소 간 자산 연결을 아직 확인하지 않았습니다. 현재 거래소 시세만 표시합니다.')+'</p></div><button class="solid" onclick="document.getElementById(\'dialog\').close();lounge(\''+symbol+'\')">'+symbol+' 이야기 보기 →</button>');
+ modal('<div class="eyebrow">'+escapeHTML(marketInfo.name)+' · '+escapeHTML(c.quote||marketInfo.quote)+' 현물'+(marketFailed?' · 이전 데이터':'')+'</div><h2 class="coin-detail-heading">'+coinIcon(c.iconSymbol===null?'':c.iconSymbol||symbol,symbol,c.logoUrl)+escapeHTML(c.name)+' <span class="subtle">'+escapeHTML(symbol)+'</span></h2><div class="detail-stats"><div><small>현재가</small><b style="font-size:15px">'+displayCoinPrice(c)+'</b></div><div><small>'+escapeHTML(marketInfo.changeLabel)+'</small><b style="font-size:16px">'+(c.change>=0?'+':'')+c.change.toFixed(2)+'%</b></div><div><small>24h 거래대금</small><b style="font-size:15px">'+displayCoinVolume(c)+'</b></div></div><p class="subtle">조회 '+escapeHTML(time(lastFetchedAt))+' KST</p><section id="detailtechnical" class="technical-detail"></section><div id="exchangecomparison"><p class="subtle">'+(c.assetId?'다른 거래소 시세를 불러오고 있어요.':'이 코인은 거래소 간 자산 연결을 아직 확인하지 않았습니다. 현재 거래소 시세만 표시합니다.')+'</p></div><button class="solid" onclick="document.getElementById(\'dialog\').close();lounge(\''+symbol+'\')">'+symbol+' 이야기 보기 →</button>');
+ loadDetailTechnical(symbol,technicalInterval,token);
  if(c.assetId)loadComparison(c.assetId,token);
 }
 async function loadComparison(assetId,token){
@@ -379,5 +381,28 @@ async function init() {
   if(activeView==='home')await loadPopular();
   if(activeView==='activity')await loadMyActivity();
   if(activeView==='post'||activeView==='write'||activeView==='member')restoreCommunityRoute();
+}
+let technicalInterval='1h',technicalRequest=0,detailTechnicalRequest=0;
+const technicalIntervals={'1h':'1시간봉','4h':'4시간봉','1d':'일봉'};
+function setTechnicalInterval(interval){if(!technicalIntervals[interval])return;technicalInterval=interval;renderCoins();}
+function technicalStats(data,expanded=false){
+ if(data.status!=='ready')return '<p class="subtle">'+escapeHTML(data.message||'지표를 표시할 수 없습니다.')+'</p>';
+ const trend={up:'상승 정렬',down:'하락 정렬',mixed:'혼조·중립'},rsi=data.rsi14;
+ const state=rsi>=70?'과열 구간':rsi<=30?'침체 구간':rsi>=50?'상승 우세':'하락 우세';
+ return '<div class="technical-metrics"><div><small>20·60봉 추세</small><b class="'+(data.trend==='up'?'up':data.trend==='down'?'down':'')+'">'+escapeHTML(trend[data.trend]||'—')+'</b></div><div><small>RSI(14) · '+state+'</small><b>'+Number(rsi).toFixed(1)+'</b></div><div><small>거래량 / 이전 20봉</small><b>'+(Number.isFinite(data.volumeRatio)?data.volumeRatio.toFixed(2)+'배':'—')+'</b></div></div>'+(expanded?'<p class="subtle">마지막 종가 '+priceLabel(data.close,'USDT')+' · SMA20 '+priceLabel(data.sma20,'USDT')+' · SMA60 '+priceLabel(data.sma60,'USDT')+'</p>':'')+'<small class="technical-time">완료 봉 '+escapeHTML(time(data.closedAt))+' KST</small>';
+}
+function technicalURL(coin,interval,exchange){return '/api/technical?'+new URLSearchParams({symbol:coin.symbol,interval,exchange,asset:coin.assetId||''});}
+async function loadPageTechnicals(visible){
+ const request=++technicalRequest;if(!['market','saved'].includes(activeView))return;
+ const interval=technicalInterval,exchange=selectedExchange;
+ document.querySelectorAll('[data-technical-interval]').forEach(b=>{const on=b.dataset.technicalInterval===interval;b.setAttribute('aria-pressed',String(on));b.classList.toggle('on',on);});
+ $('technicalrows').innerHTML=visible.map((c,i)=>'<article class="technical-card"><b>'+escapeHTML(c.symbol)+'</b> <small>'+technicalIntervals[interval]+'</small><div id="technical-'+i+'"><p class="subtle">불러오는 중…</p></div></article>').join('')||'<p class="subtle">표시할 코인이 없습니다.</p>';
+ await Promise.allSettled(visible.map(async(c,i)=>{try{const {data}=await fetchJSON(technicalURL(c,interval,exchange));if(request!==technicalRequest)return;$('technical-'+i).innerHTML=technicalStats(data);}catch{if(request===technicalRequest)$('technical-'+i).innerHTML='<p class="subtle">지표 연결 지연 · 다음 갱신 때 다시 확인합니다.</p>';}}));
+}
+async function loadDetailTechnical(symbol,interval,token){
+ const coin=coins.find(c=>c.symbol===symbol);if(!coin||!technicalIntervals[interval]||token!==detailRequest||!$('dialog').open)return;
+ const request=++detailTechnicalRequest,exchange=selectedExchange;
+ $('detailtechnical').innerHTML='<h3>차트 상태 요약</h3><p class="subtle">바이낸스 USDT 현물 · 완료된 봉 기준</p><div class="segments">'+Object.entries(technicalIntervals).map(([key,label])=>'<button type="button" aria-pressed="'+(interval===key)+'" class="'+(interval===key?'on':'')+'" onclick="loadDetailTechnical(\''+symbol+'\',\''+key+'\','+token+')">'+label+'</button>').join('')+'</div><div id="detailtechnicalstats"><p class="subtle">불러오는 중…</p></div>';
+ try{const {data}=await fetchJSON(technicalURL(coin,interval,exchange));if(token!==detailRequest||request!==detailTechnicalRequest||!$('dialog').open)return;$('detailtechnicalstats').innerHTML=technicalStats(data,true);}catch{if(token===detailRequest&&request===detailTechnicalRequest&&$('dialog').open)$('detailtechnicalstats').innerHTML='<p class="subtle">차트 지표 연결이 지연되고 있습니다.</p>';}
 }
 init();

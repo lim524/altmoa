@@ -216,3 +216,11 @@ test('signing out discards a late owner-only profile response',async()=>{
  f.run('setSession(null)');await new Promise(r=>setImmediate(r));finish(Response.json({id,nickname:'회원',can_view:true,activity_public:false,post_count:1,comment_count:0,items:[{id,title:'소유자 전용 목록',body:'내용'}]}));await new Promise(r=>setImmediate(r));
  assert.match(f.node('membercontent').innerHTML,/비공개/);assert.doesNotMatch(f.node('membercontent').innerHTML,/소유자 전용 목록/);
 });
+
+test('technical timeframe changes discard late results and expose completed-candle metrics',async()=>{
+ let release;const data={status:'ready',trend:'up',rsi14:65.2,volumeRatio:2.4,closedAt:'2026-10-17T15:59:59Z'};
+ const f=fixture(async url=>{const u=new URL(url,'https://altmoa.example');return u.searchParams.get('interval')==='1h'?new Promise(r=>release=r):Response.json({...data,rsi14:44.5,trend:'down'});});
+ f.run("activeView='market';coins=[{symbol:'SUI',assetId:'sui',market:'SUIUSDT',name:'수이',price:1,change:1,volume24h:100}];");
+ const first=f.run('loadPageTechnicals(coins)');await f.run("technicalInterval='4h';loadPageTechnicals(coins)");release(Response.json(data));await first;
+ assert.match(f.node('technical-0').innerHTML,/44.5/);assert.doesNotMatch(f.node('technical-0').innerHTML,/65.2/);assert.match(f.node('technical-0').innerHTML,/2.40배|완료 봉/);
+});
