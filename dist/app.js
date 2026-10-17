@@ -65,7 +65,7 @@ function coinIcon(symbol, fallbackSymbol = symbol, logoUrl = '') {
 }
 
 function toast(message) { $('toast').textContent = message; $('toast').style.display = 'block'; clearTimeout(window.toastTimer); window.toastTimer = setTimeout(() => $('toast').style.display = 'none', 2800); }
-function modal(html, postId = null) { activePostId = postId; $('modalcontent').innerHTML = html; if (!$('dialog').open) $('dialog').showModal(); }
+function modal(html) { $('modalcontent').innerHTML = html; if (!$('dialog').open) $('dialog').showModal(); }
 function info(title, body) { modal('<div class="eyebrow">ALTMOA</div><h2>' + escapeHTML(title) + '</h2><p>' + escapeHTML(body) + '</p>'); }
 function method() { info('관심도 집계 안내', '알트모아의 공개 게시글 제목과 코인 태그만 통합 집계합니다. 지역 구분과 외부 데이터 수집은 없습니다. 최근 1시간 또는 24시간 중 선택하며, 같은 코인의 동일 제목은 한 번만 셉니다. 댓글·추천 수는 포함하지 않고 사전에 등록된 코인만 인식합니다. 최대 최근 2,000개 글을 분석하고 초과 시 표본이라고 표시합니다. 관심도는 회원의 대화량이며 매수 신호가 아닙니다.'); }
 function rules() { info('함께 지켜요', '홍보 도배, 사칭, 수익 보장, 개인정보 공개, 불법·음란 콘텐츠는 게시할 수 없습니다. 문제가 있는 글·댓글은 신고해 주세요. 작성자는 자신의 글·댓글을 삭제할 수 있고 운영자는 신고 내용을 확인해 숨김 처리할 수 있습니다. 사진은 본인에게 게시 권한이 있는 자료만 첨부해 주세요. 외부 원문은 수집하지 않습니다. 관심 코인은 이 브라우저에 저장됩니다.'); }
@@ -109,13 +109,13 @@ function authModal(mode = 'login') {
       const body = { email: form.get('email').trim(), password: form.get('password') };
       if (signup) body.data = { nickname: form.get('nickname').trim() };
       const { data } = await fetchJSON(config.supabaseUrl + '/auth/v1' + path, { method: 'POST', headers: { apikey: config.supabaseKey, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-      if (data.access_token) { setSession({ ...data, expires_at: data.expires_at || Date.now() / 1000 + data.expires_in }); await refreshModerator(); $('dialog').close(); toast('로그인했어요.'); if(activeView==='activity')await loadMyActivity();else await loadPosts(); }
+      if (data.access_token) { setSession({ ...data, expires_at: data.expires_at || Date.now() / 1000 + data.expires_in }); await refreshModerator(); $('dialog').close(); toast('로그인했어요.'); if(activeView==='activity')await loadMyActivity();else if(activeView==='write')writePost({history:false});else if(activeView==='post'&&activePostId)await openPost(activePostId,{history:false});else await loadPosts(); }
       else info('인증 메일을 확인해 주세요', '받은 메일에서 인증을 완료한 뒤 로그인해 주세요. 메일이 없다면 스팸함도 확인해 주세요.');
     } catch (error) { if ($('autherror')) $('autherror').textContent = errorMessage(error); }
     finally { if (submit.isConnected) submit.disabled = false; }
   };
 }
-async function signOut() { try { const token = await freshToken(); if (token) await fetchJSON(config.supabaseUrl + '/auth/v1/logout', { method: 'POST', headers: { apikey: config.supabaseKey, Authorization: 'Bearer ' + token } }); } catch {} setSession(null); moderator = false; $('dialog').close(); toast('로그아웃했어요.'); if(activeView==='activity')await loadMyActivity();else await loadPosts(); }
+async function signOut() { try { const token = await freshToken(); if (token) await fetchJSON(config.supabaseUrl + '/auth/v1/logout', { method: 'POST', headers: { apikey: config.supabaseKey, Authorization: 'Bearer ' + token } }); } catch {} setSession(null); moderator = false; $('dialog').close(); toast('로그아웃했어요.'); if(activeView==='activity')await loadMyActivity();else if(activeView==='write')writePost({history:false});else if(activeView==='post'&&activePostId)await openPost(activePostId,{history:false});else await loadPosts(); }
 function resetPassword() {
   modal('<div class="eyebrow">ACCOUNT RECOVERY</div><h2>비밀번호 재설정</h2><form id="recoverform"><label>가입한 이메일<input name="email" type="email" required autocomplete="email"></label><button class="solid wide">재설정 메일 받기</button><p id="recoverstatus" role="status"></p></form>');
   $('recoverform').onsubmit = async event => { event.preventDefault(); const button = event.target.querySelector('button'); button.disabled = true; try { await fetchJSON(config.supabaseUrl + '/auth/v1/recover?redirect_to=' + encodeURIComponent(location.origin + '/'), { method: 'POST', headers: { apikey: config.supabaseKey, 'Content-Type': 'application/json' }, body: JSON.stringify({ email: new FormData(event.target).get('email').trim() }) }); info('메일을 확인해 주세요', '등록된 계정이 있다면 비밀번호 재설정 메일이 발송됩니다.'); } catch (error) { if ($('recoverstatus')) $('recoverstatus').textContent = errorMessage(error); } finally { if (button.isConnected) button.disabled = false; } };
@@ -220,72 +220,92 @@ async function loadPosts() {
     catch(error){if(postSort==='latest'&&/recommendation_count|schema cache|does not exist/i.test(error.message||'')){recommendationsReady=false;params.set('select',baseSelect);result=await db('posts?'+params,{headers:{Prefer:'count=exact'}});}else throw error;}
     if(requestId!==feedRequest)return;
     const {data,response}=result;posts=data;total=Number(response.headers.get('content-range')?.split('/')[1])||data.length;
-    $('posts').innerHTML=posts.map(post=>'<button class="post" onclick="openPost(\''+post.id+'\')"><span class="tag">'+escapeHTML(post.category)+'</span><span class="post-title">'+escapeHTML(post.title)+'<span class="comments">['+Number(post.comments?.[0]?.count||0)+']</span></span>'+(Number.isInteger(post.recommendation_count)?'<span class="post-votes">추천 '+post.recommendation_count+'</span>':'')+'<small>'+escapeHTML(post.profiles?.nickname||'알트모아 회원')+memberBadge(post.author_id)+'<br>'+time(post.created_at)+'</small></button>').join('')||'<div class="empty">'+(postSort==='popular'?'아직 추천받은 글이 없어요.':query||coinFilter?'조건에 맞는 이야기가 없어요.':'아직 이야기가 없어요. 첫 글을 남겨보세요.')+'</div>';
+    $('posts').innerHTML=posts.map(post=>'<a class="post" href="/?view=post&amp;post='+post.id+'" onclick="return followPost(event,\''+post.id+'\')"><span class="tag">'+escapeHTML(post.category)+'</span><span class="post-title">'+escapeHTML(post.title)+'<span class="comments">['+Number(post.comments?.[0]?.count||0)+']</span></span>'+(Number.isInteger(post.recommendation_count)?'<span class="post-votes">추천 '+post.recommendation_count+'</span>':'')+'<small>'+escapeHTML(post.profiles?.nickname||'알트모아 회원')+memberBadge(post.author_id)+'<br>'+time(post.created_at)+'</small></a>').join('')||'<div class="empty">'+(postSort==='popular'?'아직 추천받은 글이 없어요.':query||coinFilter?'조건에 맞는 이야기가 없어요.':'아직 이야기가 없어요. 첫 글을 남겨보세요.')+'</div>';
     loadMemberBadges(posts.map(post=>post.author_id));
     $('boardstatus').textContent=(coinFilter?coinFilter+' · ':'')+(postSort==='popular'?'누적 추천 순 · ':'최신순 · ')+'총 '+total+'개 이야기';
     $('pagination').innerHTML=(page>0?'<button onclick="changePage(-1)">← 이전</button>':'')+'<span>'+(page+1)+'</span>'+((page+1)*PAGE_SIZE<total?'<button onclick="changePage(1)">다음 →</button>':'');
   }catch(error){if(requestId!==feedRequest)return;$('posts').innerHTML='<div class="connection"><b>'+(postSort==='popular'?'추천 인기글을 준비하고 있어요.':'게시글을 불러오지 못했어요.')+'</b><button onclick="openBoard(\''+category+'\')">최신 이야기 보기 →</button></div>';$('boardstatus').textContent=postSort==='popular'?'추천 기능 연결 후 순위를 표시합니다.':errorMessage(error);$('pagination').innerHTML='';}
   document.querySelectorAll('[data-tab]').forEach(button=>button.classList.toggle('on',button.dataset.tab===category));
 }
-function changePage(delta) { page = Math.max(0, page + delta); loadPosts(); $('boardpanel').scrollIntoView({ behavior: 'smooth' }); }
-async function openPost(id) {
-  modal('<p class="loading">이야기를 불러오고 있어요.</p>', id);
+function changePage(delta) { page = Math.max(0, page + delta);const params=new URLSearchParams(location.search);params.set('page',String(page+1));history.replaceState(history.state,'','/?'+params);loadPosts(); $('boardpanel').scrollIntoView({ behavior: 'smooth' }); }
+let postPageRequest=0;
+async function openPost(id,options={}) {
+  if(!validPostId(id)){toast('올바른 게시글 주소가 아닙니다.');navigate('board',{history:false});return;}
+  if(navigate('post',{...options,id})===false)return;
+  const request=++postPageRequest;activePostId=id;
+  $('postpagecontent').innerHTML='<p class="loading">이야기를 불러오고 있어요.</p>';
+  if(!config?.communityReady){$('postpagecontent').textContent='커뮤니티 연결을 확인하고 있어요. 잠시 후 다시 시도해 주세요.';return;}
   try {
     const { data } = await db('posts?' + new URLSearchParams({ select: '*,profiles!posts_author_id_fkey(nickname)', id: 'eq.' + id, status: 'eq.published' }));
-    if (activePostId !== id || !$('dialog').open) return;
-    const p = data[0]; if (!p) return info('이야기를 찾을 수 없어요', '삭제되었거나 숨김 처리된 게시글입니다.');
-    modal('<div class="eyebrow">' + escapeHTML(p.category) + (p.coin ? ' · ' + escapeHTML(p.coin) : '') + '</div><h2>' + escapeHTML(p.title) + '</h2><p class="subtle">' + escapeHTML(p.profiles?.nickname || '알트모아 회원') + memberBadge(p.author_id) + ' · ' + time(p.created_at) + '</p><div class="postbody">' + escapeHTML(p.body) + '</div><div class="post-tags">'+renderTags(p.tags)+'</div><div id="postphotosview" class="post-photos"></div><section id="postpoll" class="post-poll"></section><div id="postrecommendation" class="post-recommendation"><p class="subtle">추천을 불러오는 중입니다.</p></div><div class="row-actions"><button onclick="reportItem(\'posts\',\'' + id + '\')">신고</button>' + (session?.user?.id === p.author_id ? '<button class="danger" onclick="deleteItem(\'posts\',\'' + id + '\')">내 글 삭제</button>' : '') + (moderator ? '<button class="danger" onclick="hideItem(\'posts\',\'' + id + '\')">운영자 숨김</button>' : '') + '</div><h3 style="font-size:14px;margin-top:26px">댓글</h3><div id="comments"><p class="subtle">불러오는 중...</p></div><form id="commentform"><label class="subtle" for="commentbody">함께 나눌 이야기</label><textarea id="commentbody" name="body" maxlength="2000" required style="height:80px" placeholder="' + (session?.user ? '댓글을 입력하세요' : '로그인 후 댓글을 남길 수 있어요') + '"></textarea><button class="solid" id="commentsubmit">댓글 등록</button><p id="commenterror" class="subtle" role="alert"></p></form>', id);
+    if(activePostId!==id||request!==postPageRequest)return;
+    const p = data[0]; if(!p){$('postpagecontent').textContent='삭제되었거나 숨김 처리된 게시글입니다.';return;}document.title=p.title+' — 알트모아';
+    $('postpagecontent').innerHTML='<div class="eyebrow">' + escapeHTML(p.category) + (p.coin ? ' · ' + escapeHTML(p.coin) : '') + '</div><h2>' + escapeHTML(p.title) + '</h2><p class="subtle">' + escapeHTML(p.profiles?.nickname || '알트모아 회원') + memberBadge(p.author_id) + ' · ' + time(p.created_at) + '</p><div class="postbody">' + escapeHTML(p.body) + '</div><div class="post-tags">'+renderTags(p.tags)+'</div><div id="postphotosview" class="post-photos"></div><section id="postpoll" class="post-poll"></section><div id="postrecommendation" class="post-recommendation"><p class="subtle">추천을 불러오는 중입니다.</p></div><div class="row-actions"><button onclick="reportItem(\'posts\',\'' + id + '\')">신고</button>' + (session?.user?.id === p.author_id ? '<button class="danger" onclick="deleteItem(\'posts\',\'' + id + '\')">내 글 삭제</button>' : '') + (moderator ? '<button class="danger" onclick="hideItem(\'posts\',\'' + id + '\')">운영자 숨김</button>' : '') + '</div><h3 style="font-size:14px;margin-top:26px">댓글</h3><div id="comments"><p class="subtle">불러오는 중...</p></div><form id="commentform"><label class="subtle" for="commentbody">함께 나눌 이야기</label><textarea id="commentbody" name="body" maxlength="2000" required style="height:80px" placeholder="' + (session?.user ? '댓글을 입력하세요' : '로그인 후 댓글을 남길 수 있어요') + '"></textarea><button class="solid" id="commentsubmit">댓글 등록</button><p id="commenterror" class="subtle" role="alert"></p></form>';
+    let commentBusy=false;
     $('commentform').onsubmit = async event => {
-      event.preventDefault(); if (!session?.user) return authModal();
-      const button = $('commentsubmit'); button.disabled = true;
-      try { await db('comments', { method: 'POST', body: JSON.stringify({ post_id: id, author_id: session.user.id, body: new FormData(event.target).get('body').trim() }) }); if (activePostId === id) { $('commentbody').value = ''; await loadComments(id); } loadPosts(); }
-      catch (error) { if ($('commenterror')) $('commenterror').textContent = errorMessage(error); }
-      finally { if (button.isConnected) button.disabled = false; }
+      event.preventDefault();if(commentBusy||activePostId!==id||request!==postPageRequest)return; if (!session?.user) return authModal();
+      const body=String(new FormData(event.target).get('body')||'').trim();if(body.length<1||body.length>2000){$('commenterror').textContent='댓글은 1~2000자로 입력하세요.';return;}const button=$('commentsubmit');commentBusy=true;button.disabled=true;
+      try { await db('comments', { method: 'POST', body: JSON.stringify({ post_id: id, author_id: session.user.id, body }) }); if (activePostId === id) { $('commentbody').value = ''; await loadComments(id); } loadPosts(); }
+      catch (error) { if(activePostId===id&&request===postPageRequest&&$('commenterror')) $('commenterror').textContent = errorMessage(error); }
+      finally { commentBusy=false;if (button.isConnected) button.disabled = false; }
     };
     loadMemberBadges([p.author_id]);
     await Promise.all([loadComments(id),loadPostRecommendation(id,p.author_id),loadPostPhotos(p.images,id),loadPoll(p)]);
-  } catch (error) { if (activePostId === id) info('이야기를 불러오지 못했어요', errorMessage(error)); }
+  } catch (error) { if(activePostId===id&&request===postPageRequest)$('postpagecontent').textContent='이야기를 불러오지 못했어요. '+errorMessage(error); }
 }
 async function loadComments(id) {
+  const request=postPageRequest;
   try {
     const { data } = await db('comments?' + new URLSearchParams({ select: 'id,author_id,body,created_at,profiles!comments_author_id_fkey(nickname)', post_id: 'eq.' + id, status: 'eq.published', order: 'created_at.asc', limit: '200' }));
-    if (activePostId !== id || !$('comments')) return;
+    if (activePostId !== id || request!==postPageRequest || !$('comments')) return;
     $('comments').innerHTML = data.map(c => '<div class="comment"><small>' + escapeHTML(c.profiles?.nickname || '알트모아 회원') + memberBadge(c.author_id) + ' · ' + time(c.created_at) + '</small><p>' + escapeHTML(c.body) + '</p><div class="row-actions"><button onclick="reportItem(\'comments\',\'' + c.id + '\')">신고</button>' + (session?.user?.id === c.author_id ? '<button onclick="deleteItem(\'comments\',\'' + c.id + '\',\'' + id + '\')">삭제</button>' : '') + (moderator ? '<button onclick="hideItem(\'comments\',\'' + c.id + '\',\'' + id + '\')">숨김</button>' : '') + '</div></div>').join('') || '<p class="subtle">첫 댓글을 남겨보세요.</p>';
     loadMemberBadges(data.map(comment=>comment.author_id));
     if (data.length === 200) $('comments').insertAdjacentHTML('beforeend', '<p class="subtle">댓글은 먼저 작성된 200개까지 표시합니다.</p>');
-  } catch (error) { if (activePostId === id && $('comments')) $('comments').textContent = errorMessage(error); }
+  } catch (error) { if (activePostId === id && request===postPageRequest && $('comments')) $('comments').textContent = errorMessage(error); }
 }
-function writePost() {
-  if (!config?.communityReady || !session?.user) return authModal();
-  composerImages.forEach(image=>URL.revokeObjectURL(image.preview));composerImages=[];
-  modal('<div class="eyebrow">NEW CONVERSATION</div><h2>어떤 이야기를 나눠볼까요?</h2><form id="writeform"><label>게시판<select name="category">'+BOARDS.map(board=>'<option'+(category===board.key?' selected':'')+'>'+board.key+'</option>').join('')+'</select></label><label>태그 (필수)<input name="tags" required maxlength="220" value="'+escapeHTML(coinFilter)+'" placeholder="usdt btc 비트코인"></label><p class="subtle">공백 또는 쉼표로 구분 · 1~10개 · 태그당 최대 20자</p><label>제목<input name="title" minlength="2" maxlength="100" required placeholder="제목을 입력하세요"></label><label>내용<textarea name="body" minlength="2" maxlength="10000" required placeholder="서로 존중하며 생각을 나눠주세요"></textarea></label><label>사진 첨부 (최대 3장)<input id="postphotos" type="file" multiple accept="image/jpeg,image/png,image/webp"></label><p class="subtle">사진은 최대 1600px JPEG로 변환하며 위치 등 원본 메타데이터를 제거합니다. 개인정보·타인의 저작물이 담기지 않았는지 확인하세요.</p><div id="photopreviews" class="photo-previews"></div><details class="poll-composer"><summary>투표 추가 (선택)</summary><label>투표 질문<input name="poll_question" maxlength="100" placeholder="예: 가장 자주 보는 거래소는?"></label><label>선택지<textarea name="poll_options" maxlength="490" placeholder="한 줄에 하나씩, 2~6개"></textarea></label><p class="subtle">1인 1표 · 등록 후 선택지와 투표 변경 불가</p></details><p class="subtle">홍보 도배·사칭·개인정보 게시 금지 · <a href="/guidelines">운영 원칙</a></p><button class="solid wide" id="writesubmit">게시글 등록</button><p class="subtle" id="writeerror" role="alert"></p></form>');
+function writePost(options={}) {
+  if(postSubmitting){toast('게시글을 등록하고 있어요.');return;}
+  if(navigate('write',options)===false)return;
+  resetComposer();
+  if(!config?.communityReady||!session?.user){$('writepagecontent').innerHTML='<h2>글쓰기</h2><p>로그인 후 이야기를 나눠보세요.</p><button class="solid" onclick="authModal()">로그인 / 회원가입</button>';if(config)authModal();return;}
+  const generation=composerGeneration;
+  $('writepagecontent').innerHTML='<div class="eyebrow">NEW CONVERSATION</div><h2>어떤 이야기를 나눠볼까요?</h2><form id="writeform"><label>게시판<select name="category">'+BOARDS.map(board=>'<option'+(category===board.key?' selected':'')+'>'+board.key+'</option>').join('')+'</select></label><label>태그 (필수)<input name="tags" required maxlength="220" value="'+escapeHTML(coinFilter)+'" placeholder="usdt btc 비트코인"></label><p class="subtle">공백 또는 쉼표로 구분 · 1~10개 · 태그당 최대 20자</p><label>제목<input name="title" minlength="2" maxlength="100" required placeholder="제목을 입력하세요"></label><label>내용<textarea name="body" minlength="2" maxlength="10000" required placeholder="서로 존중하며 생각을 나눠주세요"></textarea></label><label>사진 첨부 (최대 3장)<input id="postphotos" type="file" multiple accept="image/jpeg,image/png,image/webp"></label><p class="subtle">사진은 최대 1600px JPEG로 변환하며 위치 등 원본 메타데이터를 제거합니다. 개인정보·타인의 저작물이 담기지 않았는지 확인하세요.</p><div id="photopreviews" class="photo-previews"></div><details class="poll-composer"><summary>투표 추가 (선택)</summary><label>투표 질문<input name="poll_question" maxlength="100" placeholder="예: 가장 자주 보는 거래소는?"></label><label>선택지<textarea name="poll_options" maxlength="490" placeholder="한 줄에 하나씩, 2~6개"></textarea></label><p class="subtle">1인 1표 · 등록 후 선택지와 투표 변경 불가</p></details><p class="subtle">홍보 도배·사칭·개인정보 게시 금지 · <a href="/guidelines">운영 원칙</a></p><button class="solid wide" id="writesubmit">게시글 등록</button><p class="subtle" id="writeerror" role="alert"></p></form>';
   watchPostCooldown();
   $('postphotos').onchange=event=>selectPhotos([...event.target.files]);
   $('writeform').onsubmit = async event => {
-    event.preventDefault();if(postSubmitting)return;if(postCooldownSeconds()>0){watchPostCooldown();return;}const authorId=session.user.id;const form = new FormData(event.target); const button = $('writesubmit');postSubmitting=true;renderPostSubmit();let uploaded=[],saved=false;
+    event.preventDefault();if(postSubmitting||activeView!=='write'||generation!==composerGeneration||!session?.user)return;if(postCooldownSeconds()>0){watchPostCooldown();return;}const authorId=session.user.id;const form = new FormData(event.target); const button = $('writesubmit');postSubmitting=true;renderPostSubmit();let uploaded=[],saved=false;
     try {
       if($('postphotos').disabled)throw Error('사진 처리가 끝난 후 등록해 주세요.');
+      const title=String(form.get('title')||'').trim(),body=String(form.get('body')||'').trim(),board=form.get('category');if(title.length<2||title.length>100||body.length<2||body.length>10000||!BOARDS.some(b=>b.key===board))throw Error('제목은 2~100자, 내용은 2~10000자로 입력하고 게시판을 선택하세요.');
       const tags=parseTags(form.get('tags'));const question=String(form.get('poll_question')||'').trim(),options=String(form.get('poll_options')||'').split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
       if((question||options.length)&&(question.length<2||question.length>100||options.length<2||options.length>6||options.some(o=>o.length>80)||new Set(options).size!==options.length))throw Error('투표 질문 2~100자와 서로 다른 선택지 2~6개(각 80자 이하)를 입력하세요.');
-      uploaded=await uploadComposerImages();
-      const { data } = await db('posts', { method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ author_id: session.user.id, category: form.get('category'), tags, images:uploaded,poll_question:question||null,poll_options:options, title: form.get('title').trim(), body: form.get('body').trim() }) });saved=true;rememberPostCooldown(authorId);
+      uploaded=await uploadComposerImages(authorId);if(session?.user?.id!==authorId)throw Error('로그인 계정이 변경되었습니다. 다시 로그인해 주세요.');
+      const { data } = await db('posts', { method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ author_id: authorId, category: board, tags, images:uploaded,poll_question:question||null,poll_options:options, title, body }) });saved=true;rememberPostCooldown(authorId);
       composerImages.forEach(image=>URL.revokeObjectURL(image.preview));composerImages=[];
-      category = form.get('category'); coinFilter = ''; query = ''; $('search').value = ''; page = 0; navigate('board',{category}); await loadPosts(); toast('게시글을 등록했어요.'); loadAttention(); if (data[0]) openPost(data[0].id);
-    } catch (error) { if(/60초/.test(error.message||''))rememberPostCooldown(authorId);if(!saved&&error.status)await deleteUploadedPhotos(uploaded);if ($('writeerror')) $('writeerror').textContent = /태그|투표|사진|선택지/.test(error.message)?error.message:errorMessage(error); }
+      postSubmitting=false;category = form.get('category'); coinFilter = ''; query = ''; $('search').value = ''; page = 0; navigate('board',{category}); toast('게시글을 등록했어요.'); loadAttention(); if(data[0])await openPost(data[0].id);
+    } catch (error) { if(/60초/.test(error.message||''))rememberPostCooldown(authorId);if(!saved&&error.status)await deleteUploadedPhotos(uploaded);if ($('writeerror')) $('writeerror').textContent = /태그|투표|사진|선택지|제목|계정/.test(error.message)?error.message:errorMessage(error); }
     finally { postSubmitting=false;if (button.isConnected)watchPostCooldown(); }
   };
 }
 
+function validContentTarget(table,id){return ['posts','comments'].includes(table)&&validPostId(id);}
 function deleteItem(table, id, postId = '') {
-  modal('<h2>' + (table === 'posts' ? '내 글' : '댓글') + '을 삭제할까요?</h2><p>삭제하면 되돌릴 수 없습니다.</p><button class="solid" id="confirmdelete">삭제하기</button> <button onclick="' + (postId ? "openPost('" + postId + "')" : "document.getElementById('dialog').close()") + '">취소</button><p id="deleteerror" role="alert"></p>');
-  $('confirmdelete').onclick = async event => { const button = event.target; button.disabled = true; try { await db(table + '?id=eq.' + id, { method: 'DELETE' }); $('dialog').close(); toast('삭제했어요.'); loadPosts(); if(activeView==='home')loadPopular(); if (postId) openPost(postId); } catch (error) { if ($('deleteerror')) $('deleteerror').textContent = errorMessage(error); } finally { if (button.isConnected) button.disabled = false; } };
+  if(!validContentTarget(table,id)||!session?.user)return;
+  modal('<h2>' + (table === 'posts' ? '내 글' : '댓글') + '을 삭제할까요?</h2><p>삭제하면 되돌릴 수 없습니다.</p><button class="solid" id="confirmdelete">삭제하기</button> <button onclick="' + "document.getElementById('dialog').close()" + '">취소</button><p id="deleteerror" role="alert"></p>');
+  $('confirmdelete').onclick = async event => { const button = event.target;if(button.disabled)return;button.disabled=true;try{const {data}=await db(table+'?id=eq.'+id+'&select=id',{method:'DELETE',headers:{Prefer:'return=representation'}});if(!data?.length)throw Error('삭제 권한이 없거나 이미 삭제된 내용입니다.'); $('dialog').close(); toast('삭제했어요.'); loadPosts(); if(activeView==='home')loadPopular(); if(postId&&activePostId===postId)await loadComments(postId);else if(table==='posts'&&activePostId===id)openBoard(category); } catch (error) { if ($('deleteerror')) $('deleteerror').textContent = errorMessage(error); } finally { if (button.isConnected) button.disabled = false; } };
 }
 function reportItem(table, id) {
+  if(!validContentTarget(table,id))return;
   if (!session?.user) return authModal();
   modal('<h2>문제가 있는 내용을 알려주세요</h2><form id="reportform"><label>신고 사유<textarea name="reason" minlength="2" maxlength="500" required placeholder="도배, 사칭, 부적절한 내용 등"></textarea></label><button class="solid" id="reportsubmit">신고 접수</button><p id="reporterror" role="alert"></p></form>');
-  $('reportform').onsubmit = async event => { event.preventDefault(); const button = $('reportsubmit'); button.disabled = true; try { await db('reports', { method: 'POST', body: JSON.stringify({ reporter_id: session.user.id, [table === 'posts' ? 'post_id' : 'comment_id']: id, reason: new FormData(event.target).get('reason').trim() }) }); info('신고를 접수했어요', '운영자가 내용을 확인할 수 있도록 저장했습니다.'); } catch (error) { if ($('reporterror')) $('reporterror').textContent = errorMessage(error); } finally { if (button.isConnected) button.disabled = false; } };
+  let reportBusy=false;$('reportform').onsubmit = async event => { event.preventDefault();if(reportBusy||!session?.user)return;const reason=String(new FormData(event.target).get('reason')||'').trim();if(reason.length<2||reason.length>500){$('reporterror').textContent='신고 사유는 2~500자로 입력하세요.';return;}const button=$('reportsubmit');reportBusy=true;button.disabled=true; try { await db('reports', { method: 'POST', body: JSON.stringify({ reporter_id: session.user.id, [table === 'posts' ? 'post_id' : 'comment_id']: id, reason }) }); info('신고를 접수했어요', '운영자가 내용을 확인할 수 있도록 저장했습니다.'); } catch (error) { if ($('reporterror')) $('reporterror').textContent = errorMessage(error); } finally { reportBusy=false;if (button.isConnected) button.disabled = false; } };
 }
-async function hideItem(table, id, postId = '') { try { await db(table + '?id=eq.' + id, { method: 'PATCH', body: JSON.stringify({ status: 'hidden' }) }); $('dialog').close(); toast('숨김 처리했어요.'); loadPosts(); if(activeView==='home')loadPopular(); if (postId) openPost(postId); } catch (error) { toast(errorMessage(error)); } }
+const hidingItems=new Set();
+async function hideItem(table,id,postId=''){
+ if(!moderator||!validContentTarget(table,id)||hidingItems.has(id))return;
+ hidingItems.add(id);
+ try{const {data}=await db(table+'?id=eq.'+id+'&select=id',{method:'PATCH',headers:{Prefer:'return=representation'},body:JSON.stringify({status:'hidden'})});if(!data?.length)throw Error('숨김 권한이 없거나 이미 삭제된 내용입니다.');$('dialog').close();toast('숨김 처리했어요.');loadPosts();if(activeView==='home')loadPopular();if(postId&&activePostId===postId)await loadComments(postId);else if(table==='posts'&&activePostId===id)openBoard(category);}
+ catch(error){toast(errorMessage(error));}finally{hidingItems.delete(id);}
+}
 async function showReports() {
   if (!moderator) return;
   modal('<h2>신고 관리</h2><p class="subtle">불러오는 중...</p>');
@@ -297,6 +317,7 @@ async function init() {
   renderPopularShell(); updateAuth(); restoreCommunityRoute();
   if(activeView!=='home')loadAttentionSummary();
   window.addEventListener?.('popstate',restoreCommunityRoute);
+  window.addEventListener?.('beforeunload',event=>{if(postSubmitting){event.preventDefault();event.returnValue='';}});
 
   $('attentionperiod').onchange=loadAttention;
   document.querySelectorAll('[data-nav],[data-side]').forEach(b => b.onclick = () => navigate(b.dataset.nav || b.dataset.side));
@@ -306,7 +327,7 @@ async function init() {
   $('searchform').onsubmit = event => { event.preventDefault(); query = $('search').value.trim().slice(0, 100); savedOnly = false; coinFilter = ''; page = 0; marketPage=0; if(activeView==='market'||activeView==='saved')renderCoins();else navigate('board',{category:'전체',sort:'latest'}); };
   $('theme').onclick = () => { document.body.classList.toggle('dark'); store('altmoa-dark', document.body.classList.contains('dark')); };
   if (read('altmoa-dark', false)) document.body.classList.add('dark');
-  $('dialog').addEventListener('close', () => { if (!$('dialog').open) activePostId = null; });
+
   $('dialog').addEventListener('click', event => { if (event.target === $('dialog')) { const r = $('dialog').getBoundingClientRect(); if (event.clientX < r.left || event.clientX > r.right || event.clientY < r.top || event.clientY > r.bottom) $('dialog').close(); } });
   setInterval(()=>{if(!document.hidden){if(['market','saved'].includes(activeView))loadMarket();if(activeView==='rank')loadAttention();if(activeView==='home'){loadPopular();loadAttentionSummary();}}},60000);
   document.addEventListener('visibilitychange', () => { if (['market','saved'].includes(activeView) && !document.hidden && (!lastFetchedAt || Date.now() - new Date(lastFetchedAt).getTime() > 60000)) loadMarket(); });
@@ -327,6 +348,6 @@ async function init() {
   if(activeView==='board')await loadPosts();
   if(activeView==='home')await loadPopular();
   if(activeView==='activity')await loadMyActivity();
-  const linkedPost=new URLSearchParams(location.search).get('post');if(linkedPost&&/^[a-f0-9-]{36}$/i.test(linkedPost))await openPost(linkedPost);
+  if(activeView==='post'||activeView==='write')restoreCommunityRoute();
 }
 init();

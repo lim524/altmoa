@@ -10,8 +10,8 @@ function fixture(handler) {
   const nodes = new Map(), data = new Map();
   const storage = { getItem:k=>data.get(k)||null, setItem:(k,v)=>data.set(k,v) };
   const element = id => { if (!nodes.has(id)) nodes.set(id,{id,textContent:'',innerHTML:'',value:'',style:{},isConnected:true,disabled:false,classList:{toggle(){},contains(){return false},add(){}},addEventListener(){},showModal(){this.open=true},close(){this.open=false},scrollIntoView(){},setAttribute(){},insertAdjacentHTML(_,html){this.innerHTML+=html}});return nodes.get(id); };
-  const views=[['homepage','home'],['boardpanel','board'],['marketpanel','market'],['rankpanel','rank']].map(([id,view])=>Object.assign(element(id),{dataset:{view},hidden:view!=='home'}));
-  const context = vm.createContext({ document:{getElementById:element,querySelectorAll:selector=>selector==='[data-view]'?views:[],addEventListener(){},body:{classList:{toggle(){},contains(){return false},add(){}}}}, window:{scrollTo(){}}, localStorage:storage,sessionStorage:storage,setTimeout:()=>1,clearTimeout(){},clearInterval(){},setInterval(){},URL,URLSearchParams,AbortSignal,location:{origin:'https://altmoa.example',pathname:'/',search:'',hash:''},history:{replaceState(){},pushState(state,title,path){this.lastPath=path}},fetch:(url,options)=>String(url)==='/api/conversion'?Promise.resolve(Response.json({rate:1400,source:'업비트 USDT/KRW',fetchedAt:new Date().toISOString()})):handler(url,options),FormData:class{constructor(fields){this.fields=fields}get(k){return this.fields[k]}} });
+  const views=[['homepage','home'],['boardpanel','board'],['marketpanel','market'],['rankpanel','rank'],['postpage','post'],['writepage','write']].map(([id,view])=>Object.assign(element(id),{dataset:{view},hidden:view!=='home'}));
+  const context = vm.createContext({ document:{getElementById:element,querySelectorAll:selector=>selector==='[data-view]'?views:selector==='[data-poll-option]'?[...nodes.values()].filter(n=>n.dataset?.pollOption!==undefined):[],addEventListener(){},body:{classList:{toggle(){},contains(){return false},add(){}}}}, window:{scrollTo(){}}, localStorage:storage,sessionStorage:storage,setTimeout:()=>1,clearTimeout(){},clearInterval(){},setInterval(){},URL,URLSearchParams,AbortSignal,location:{origin:'https://altmoa.example',pathname:'/',search:'',hash:''},history:{replaceState(){},pushState(state,title,path){this.lastPath=path}},fetch:(url,options)=>String(url)==='/api/conversion'?Promise.resolve(Response.json({rate:1400,source:'업비트 USDT/KRW',fetchedAt:new Date().toISOString()})):handler(url,options),FormData:class{constructor(fields){this.fields=fields}get(k){return this.fields[k]}} });
   vm.runInContext(composerCode+'\n'+activityCode+'\n'+communityCode+'\n'+code,context);
   return { run:source=>vm.runInContext(source,context),node:element,data };
 }
@@ -39,12 +39,12 @@ test('untrusted post titles and nicknames are escaped',async()=>{
 test('post submission sends signed-in author and does not fake success on DB failure',async()=>{
   const requests=[];const f=fixture(async(url,options)=>{requests.push({url,options});return Response.json({message:'permission denied'},{status:403})});configure(f);f.run('writePost()');const submit=f.node('writeform').onsubmit;
   await submit({preventDefault(){},target:{category:'분석',tags:'usdt btc',title:'실제 제목',body:'실제 내용'}});
-  const body=JSON.parse(requests[0].options.body);assert.equal(body.author_id,'user-123');assert.equal(body.title,'실제 제목');assert.deepEqual(body.tags,['USDT','BTC']);assert.match(f.node('writeerror').textContent,/권한/);assert.equal(f.node('dialog').open,true);assert.equal(f.node('writesubmit').disabled,false);
+  const body=JSON.parse(requests[0].options.body);assert.equal(body.author_id,'user-123');assert.equal(body.title,'실제 제목');assert.deepEqual(body.tags,['USDT','BTC']);assert.match(f.node('writeerror').textContent,/권한/);assert.equal(f.node('writepage').hidden,false);assert.equal(f.node('dialog').open===true,false);assert.equal(f.node('writesubmit').disabled,false);
 });
 
 test('successful DB post submission reloads feed and opens the saved post',async()=>{
   const id='00000000-0000-0000-0000-000000000001';
-  const f=fixture(async(url,options)=>{if(options.method==='POST')return Response.json([{id}]);if(String(url).includes('comments?'))return Response.json([]);return Response.json([{id,title:'저장된 제목',body:'저장된 본문',category:'자유',author_id:'user-123',created_at:'2026-10-17T08:00:00Z',profiles:{nickname:'작성자'},comments:[{count:0}]}],{headers:{'content-range':'0-0/1'}})});configure(f);f.run('writePost()');await f.node('writeform').onsubmit({preventDefault(){},target:{category:'자유',tags:'btc',title:'저장된 제목',body:'저장된 본문'}});await new Promise(r=>setImmediate(r));assert.match(f.node('posts').innerHTML,/저장된 제목/);assert.match(f.node('modalcontent').innerHTML,/저장된 본문/);
+  const f=fixture(async(url,options)=>{if(options.method==='POST')return Response.json([{id}]);if(String(url).includes('comments?'))return Response.json([]);return Response.json([{id,title:'저장된 제목',body:'저장된 본문',category:'자유',author_id:'user-123',created_at:'2026-10-17T08:00:00Z',profiles:{nickname:'작성자'},comments:[{count:0}]}],{headers:{'content-range':'0-0/1'}})});configure(f);f.run('writePost()');await f.node('writeform').onsubmit({preventDefault(){},target:{category:'자유',tags:'btc',title:'저장된 제목',body:'저장된 본문'}});await new Promise(r=>setImmediate(r));assert.match(f.node('posts').innerHTML,/저장된 제목/);assert.match(f.node('postpagecontent').innerHTML,/저장된 본문/);
 });
 
 
@@ -105,16 +105,66 @@ test('post tags are mandatory, normalized and deduplicated before any write',asy
 });
 
 test('missing post feature columns explain the required migration and retain the composer',async()=>{
- const f=fixture(async()=>Response.json({code:'PGRST204',message:"Could not find the 'images' column of 'posts' in the schema cache"},{status:400}));configure(f);f.run('writePost()');await f.node('writeform').onsubmit({preventDefault(){},target:{category:'자유',tags:'btc',title:'입력 유지 검사',body:'본문 유지 검사'}});assert.match(f.node('writeerror').textContent,/upgrade-community.sql/);assert.equal(f.node('dialog').open,true);assert.equal(f.node('writesubmit').disabled,false);
+ const f=fixture(async()=>Response.json({code:'PGRST204',message:"Could not find the 'images' column of 'posts' in the schema cache"},{status:400}));configure(f);f.run('writePost()');await f.node('writeform').onsubmit({preventDefault(){},target:{category:'자유',tags:'btc',title:'입력 유지 검사',body:'본문 유지 검사'}});assert.match(f.node('writeerror').textContent,/upgrade-community.sql/);assert.equal(f.node('writepage').hidden,false);assert.equal(f.node('dialog').open===true,false);assert.equal(f.node('writesubmit').disabled,false);
 });
 
 test('post lists, popular lists, details and comments explicitly select the author relationship',async()=>{
  const requests=[];const f=fixture(async url=>{const u=new URL(url);requests.push(u);const select=u.searchParams.get('select')||'';if(select.includes('profiles(nickname)'))return Response.json({code:'PGRST201',message:'More than one relationship'},{status:300});if(u.pathname.endsWith('/posts')&&select.startsWith('*'))return Response.json([{id:'00000000-0000-0000-0000-000000000001',title:'작성자 관계 검사',body:'추천자와 작성자는 별개입니다.',category:'분석',author_id:'user-123',created_at:new Date().toISOString(),profiles:{nickname:'작성자'}}]);return Response.json([]);});configure(f);await f.run('loadPosts()');await f.run('loadPopular()');await f.run("openPost('00000000-0000-0000-0000-000000000001')");
  const authorQueries=requests.filter(u=>u.searchParams.get('select')?.includes('profiles'));
- assert.ok(authorQueries.length>=8);for(const u of authorQueries)assert.match(u.searchParams.get('select'),u.pathname.endsWith('/comments')?/profiles!comments_author_id_fkey\(nickname\)/:/profiles!posts_author_id_fkey\(nickname\)/);assert.match(f.node('modalcontent').innerHTML,/작성자 관계 검사/);
+ assert.ok(authorQueries.length>=8);for(const u of authorQueries)assert.match(u.searchParams.get('select'),u.pathname.endsWith('/comments')?/profiles!comments_author_id_fkey\(nickname\)/:/profiles!posts_author_id_fkey\(nickname\)/);assert.match(f.node('postpagecontent').innerHTML,/작성자 관계 검사/);
 });
 
 test('post cooldown and an in-flight submission prevent extra writes before reaching the database',async()=>{
  let calls=0,complete;const f=fixture(async()=>{calls++;return new Promise(resolve=>complete=resolve)});configure(f);f.run('writePost()');const event={preventDefault(){},target:{category:'자유',tags:'btc',title:'반복 요청 검사',body:'중복 요청을 보내지 않습니다.'}};
  f.run('rememberPostCooldown()');await f.node('writeform').onsubmit(event);assert.equal(calls,0);assert.match(f.node('writesubmit').textContent,/초 후/);f.run("store('altmoa-post-cooldown:user-123',0)");const first=f.node('writeform').onsubmit(event);await new Promise(resolve=>setImmediate(resolve));await f.node('writeform').onsubmit(event);assert.equal(calls,1);complete(Response.json({message:'게시글은 60초에 한 번 작성할 수 있습니다.'},{status:400}));await first;await f.node('writeform').onsubmit(event);assert.equal(calls,1);assert.equal(f.node('writesubmit').disabled,true);
+});
+
+test('post and composer have dedicated shareable pages and dialogs do not invalidate the post',async()=>{
+ const id='00000000-0000-0000-0000-000000000001';const f=fixture(async url=>Response.json(String(url).includes('select=*')?[{id,title:'독립 화면',body:'본문',author_id:'other',category:'자유'}]:[]));configure(f);
+ await f.run(`openPost('${id}')`);assert.equal(f.run('activeView'),'post');assert.equal(f.node('postpage').hidden,false);assert.equal(f.node('boardpanel').hidden,true);assert.notEqual(f.node('dialog').open,true);assert.match(f.run('history.lastPath'),/view=post&post=/);
+ f.run("info('안내','본문 위 안내')");assert.equal(f.run('activePostId'),id);assert.match(f.node('postpagecontent').innerHTML,/독립 화면/);
+ f.run('writePost()');assert.equal(f.run('activeView'),'write');assert.equal(f.node('postpage').hidden,true);assert.match(f.run('history.lastPath'),/view=write/);assert.notEqual(f.node('dialog').open,true);
+ f.run(`location.search='?view=post&post=${id}';restoreCommunityRoute()`);await new Promise(r=>setImmediate(r));assert.equal(f.run('activePostId'),id);assert.equal(f.run('activeView'),'post');
+});
+
+test('invalid IDs and content targets never make data requests; non-moderators cannot request hiding',async()=>{
+ let calls=0;const f=fixture(async()=>{calls++;return Response.json([])});configure(f);
+ await f.run("openPost('not-a-uuid&status=eq.hidden')");f.run("deleteItem('profiles','00000000-0000-0000-0000-000000000001')");f.run("reportItem('posts','malformed')");await f.run("hideItem('posts','00000000-0000-0000-0000-000000000001')");
+ // An invalid post falls back to the board, whose ordinary list read is allowed.
+ assert.equal(calls,1);assert.equal(f.run('activePostId'),null);
+});
+
+test('whitespace, oversized text and forged boards are rejected before uploading or posting',async()=>{
+ let calls=0;const f=fixture(async()=>{calls++;return Response.json([])});configure(f);f.run('writePost()');
+ for(const target of [{category:'관리자',title:'제목',body:'본문'},{category:'자유',title:'  ',body:'본문'},{category:'자유',title:'제목',body:'x'.repeat(10001)}])await f.node('writeform').onsubmit({preventDefault(){},target:{tags:'btc',...target}});
+ assert.equal(calls,0);assert.match(f.node('writeerror').textContent,/제목/);assert.equal(f.node('writesubmit').disabled,false);
+});
+
+test('late post responses cannot replace a newer page or reopen a dialog',async()=>{
+ const a='00000000-0000-0000-0000-000000000001',b='00000000-0000-0000-0000-000000000002';let resolveA;
+ const f=fixture(async url=>{const u=new URL(url);if(u.searchParams.get('select')?.startsWith('*')){if(u.searchParams.get('id')==='eq.'+a)return new Promise(resolve=>resolveA=resolve);return Response.json([{id:b,title:'다음 글',body:'새 본문',author_id:'other',category:'자유'}]);}return Response.json([])});configure(f);
+ const pending=f.run(`openPost('${a}')`);await f.run(`openPost('${b}')`);resolveA(Response.json([{id:a,title:'늦은 글',body:'이전 본문',category:'자유'}]));await pending;
+ assert.match(f.node('postpagecontent').innerHTML,/새 본문/);assert.doesNotMatch(f.node('postpagecontent').innerHTML,/이전 본문/);assert.notEqual(f.node('dialog').open,true);
+});
+
+test('comment and report in-flight guards reject repeated submissions',async()=>{
+ const id='00000000-0000-0000-0000-000000000001';let writes=0,complete;
+ const f=fixture(async(url,options)=>{if(options.method==='POST'){writes++;return new Promise(resolve=>complete=resolve);}return Response.json(new URL(url).searchParams.get('select')?.startsWith('*')?[{id,title:'댓글 검사',body:'본문',category:'자유',author_id:'other'}]:[])});configure(f);await f.run(`openPost('${id}')`);
+ const submit=f.node('commentform').onsubmit,event={preventDefault(){},target:{body:'반복 댓글'}};const first=submit(event);await new Promise(r=>setImmediate(r));await submit(event);assert.equal(writes,1);complete(new Response(null,{status:201}));await first;
+ f.run(`reportItem('posts','${id}')`);const report=f.node('reportform').onsubmit,reportEvent={preventDefault(){},target:{reason:'반복 신고 검사'}};const next=report(reportEvent);await new Promise(r=>setImmediate(r));await report(reportEvent);assert.equal(writes,2);complete(new Response(null,{status:201}));await next;
+});
+
+test('a zero-row deletion never claims success and account changes abort an unsent post',async()=>{
+ let calls=0;const f=fixture(async()=>{calls++;return Response.json([])});configure(f);f.run("deleteItem('posts','00000000-0000-0000-0000-000000000001')");await f.node('confirmdelete').onclick({target:f.node('confirmdelete')});assert.equal(calls,1);assert.doesNotMatch(f.node('toast').textContent,/삭제했어요/);assert.match(f.node('deleteerror').textContent,/권한|요청/);
+ f.run('writePost();uploadComposerImages=async()=>{setSession(null);return []}');await f.node('writeform').onsubmit({preventDefault(){},target:{category:'자유',tags:'btc',title:'계정 검사',body:'변경된 계정으로 저장 금지'}});assert.equal(calls,1);assert.match(f.node('writeerror').textContent,/계정/);
+});
+
+test('photo processing is discarded after leaving the composer',async()=>{
+ const f=fixture(async()=>Response.json([]));configure(f);f.run('writePost();preparePhoto=()=>new Promise(resolve=>globalThis.finishPhoto=resolve)');const pending=f.run("selectPhotos([{type:'image/jpeg'}])");f.run("navigate('board')");f.run("finishPhoto({size:100})");await pending;assert.equal(f.run('composerImages.length'),0);assert.equal(f.run('activeView'),'board');f.run('removeComposerImage(-1)');
+});
+
+
+test('rapid clicks on different poll options send only one vote',async()=>{
+ const id='00000000-0000-0000-0000-000000000001';let calls=0,complete;const f=fixture(async(url,options)=>{if(String(url).endsWith('/poll_votes')){calls++;return new Promise(resolve=>complete=resolve);}return Response.json([])});configure(f);f.node('poll0').dataset={pollOption:'0'};f.node('poll1').dataset={pollOption:'1'};f.run(`activePostId='${id}';activeView='post'`);await f.run(`loadPoll({id:'${id}',poll_question:'어떤 선택?',poll_options:['첫째','둘째']})`);
+ const first=f.node('poll0').onclick();await new Promise(r=>setImmediate(r));await f.node('poll1').onclick();assert.equal(calls,1);assert.equal(f.node('poll1').disabled,true);complete(new Response(null,{status:201}));await first;
 });

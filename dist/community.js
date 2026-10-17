@@ -7,7 +7,7 @@ function renderPopularShell(){
  $('popularboards').innerHTML=BOARDS.map(board=>'<section class="panel popular-board"><div class="section-head"><div><h2>'+board.name+'</h2><p>'+board.description+'</p></div><button class="tiny-link" onclick="openBoard(\''+board.key+'\',\'popular\')">더보기 →</button></div><div id="popular-'+board.key+'" class="popular-list"><p class="loading">불러오는 중입니다.</p></div><button class="board-entry" onclick="openBoard(\''+board.key+'\')">게시판 둘러보기 →</button></section>').join('');
 }
 function popularRows(rows){
- return rows.map((post,index)=>'<button class="popular-post" onclick="openPost(\''+post.id+'\')"><span class="popular-rank">'+(index+1)+'</span><span class="popular-post-copy"><span class="popular-title">'+escapeHTML(post.title)+'</span><small>'+escapeHTML(boardLabel(post.category))+' · '+escapeHTML(post.profiles?.nickname||'알트모아 회원')+memberBadge(post.author_id)+' · 댓글 '+Number(post.comments?.[0]?.count||0)+'</small></span><span class="recommend-count">추천 <b>'+Number(post.recommendation_count)+'</b></span></button>').join('')||'<div class="popular-empty">아직 추천받은 글이 없어요.<br>좋은 이야기에 첫 추천을 남겨주세요.</div>';
+ return rows.map((post,index)=>'<a class="popular-post" href="/?view=post&amp;post='+post.id+'" onclick="return followPost(event,\''+post.id+'\')"><span class="popular-rank">'+(index+1)+'</span><span class="popular-post-copy"><span class="popular-title">'+escapeHTML(post.title)+'</span><small>'+escapeHTML(boardLabel(post.category))+' · '+escapeHTML(post.profiles?.nickname||'알트모아 회원')+memberBadge(post.author_id)+' · 댓글 '+Number(post.comments?.[0]?.count||0)+'</small></span><span class="recommend-count">추천 <b>'+Number(post.recommendation_count)+'</b></span></a>').join('')||'<div class="popular-empty">아직 추천받은 글이 없어요.<br>좋은 이야기에 첫 추천을 남겨주세요.</div>';
 }
 async function loadPopular(){
  const token=++popularRequest;
@@ -26,9 +26,17 @@ async function loadAttentionSummary(){
  $('attentionsummary').innerHTML=(data.items||[]).slice(0,5).map((item,i)=>'<button class="summary-coin" onclick="navigate(\'rank\')"><span class="summary-rank">'+(i+1)+'</span>'+coinIcon(item.symbol)+'<span><b>'+escapeHTML(item.name)+'</b><small>'+escapeHTML(item.symbol)+'</small></span><strong>'+Number(item.mentions)+'건</strong></button>').join('')||'<div class="summary-empty">아직 집계된 코인 언급이 없어요.<br>이야기가 쌓이면 관심도를 보여드려요.</div>';
  }catch{if(token===summaryRequest)$('attentionsummary').innerHTML='<p class="inline-status">관심도를 불러오지 못했어요.</p>';}
 }
+function validPostId(id){return typeof id==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(id);}
+function followPost(event,id){if(event.button||event.ctrlKey||event.metaKey||event.shiftKey||event.altKey)return true;event.preventDefault();openPost(id);return false;}
+function returnToCommunity(){if(history.state?.communityReturn){history.back();return;}openBoard(category);}
 function navigate(view,options={}){
- if(!['home','board','market','rank','saved','activity'].includes(view))view='home';
- const previous=activeView;activeView=view;
+ if(!['home','board','market','rank','saved','activity','post','write'].includes(view))view='home';
+ const previous=activeView;
+ if(postSubmitting&&view!==activeView){toast('게시글 등록이 끝날 때까지 기다려주세요.');if(options.history===false)history.replaceState(history.state,'','/?view=write');return false;}
+ if(view!=='post')activePostId=null;
+ if(view!=='write'&&previous==='write')resetComposer();
+ activeView=view;
+ if($('dialog').open)$('dialog').close();
  if(view!==previous&&['market','saved'].includes(view))marketPage=0;
  if(view==='saved')savedOnly=true;else if(view==='market')savedOnly=false;
  if(view==='board'){
@@ -42,8 +50,8 @@ function navigate(view,options={}){
  document.querySelectorAll('[data-side]').forEach(button=>button.classList.toggle('selected',button.dataset.side===view));
  document.querySelectorAll('[data-board]').forEach(button=>button.classList.toggle('selected',view==='board'&&button.dataset.board===category));
  document.querySelectorAll('[data-post-sort]').forEach(button=>button.classList.toggle('on',button.dataset.postSort===postSort));
- const title=view==='home'?'알트모아 — 알트코인 커뮤니티':view==='board'?boardLabel(category)+' — 알트모아':view==='activity'?'내 활동 — 알트모아':view==='rank'?'알트 관심도 — 알트모아':view==='saved'?'관심 코인 — 알트모아':'알트코인 시세 — 알트모아';document.title=title;
- if(options.history!==false){const params=new URLSearchParams();if(view!=='home')params.set('view',view);if(view==='board'){if(category!=='전체')params.set('category',category);if(postSort==='popular')params.set('sort','popular');if(query)params.set('q',query);if(coinFilter)params.set('coin',coinFilter);}const path='/'+(params.size?'?'+params:'');history.pushState({},'',path);}
+ const title=view==='post'?'게시글 — 알트모아':view==='write'?'글쓰기 — 알트모아':view==='home'?'알트모아 — 알트코인 커뮤니티':view==='board'?boardLabel(category)+' — 알트모아':view==='activity'?'내 활동 — 알트모아':view==='rank'?'알트 관심도 — 알트모아':view==='saved'?'관심 코인 — 알트모아':'알트코인 시세 — 알트모아';document.title=title;
+ if(options.history!==false){const params=new URLSearchParams();if(view!=='home')params.set('view',view);if(view==='board'){if(category!=='전체')params.set('category',category);if(postSort==='popular')params.set('sort','popular');if(query)params.set('q',query);if(coinFilter)params.set('coin',coinFilter);}if(view==='board'&&page>0)params.set('page',String(page+1));if(view==='post')params.set('post',options.id||activePostId||'');const destination='/'+(params.size?'?'+params:'');history.pushState({communityReturn:true},'',destination);}
  if(view==='home'){loadPopular();loadAttentionSummary();}
  if(view==='board'){ $('boardtitle').textContent=boardLabel(category);$('boarddescription').textContent=coinFilter?coinFilter+' 관련 이야기':'새로운 이야기를 나누는 알트모아 커뮤니티';loadPosts();}
  if(panelView==='market'){renderCoins();if(!coins.length)loadMarket();}
@@ -53,18 +61,19 @@ function navigate(view,options={}){
 }
 function openBoard(board='전체',sort='latest'){page=0;coinFilter='';query='';$('search').value='';navigate('board',{category:board,sort});}
 function restoreCommunityRoute(){
- const params=new URLSearchParams(location.search);category=params.get('category')||'전체';postSort=params.get('sort')==='popular'?'popular':'latest';query=(params.get('q')||'').slice(0,100);coinFilter=/^[A-Z0-9]{1,20}$/.test(params.get('coin')||'')?params.get('coin'):'';$('search').value=query;page=0;navigate(params.get('view')||'home',{history:false,scroll:false});
+ const params=new URLSearchParams(location.search);category=params.get('category')||'전체';postSort=params.get('sort')==='popular'?'popular':'latest';query=(params.get('q')||'').slice(0,100);coinFilter=/^[A-Z0-9]{1,20}$/.test(params.get('coin')||'')?params.get('coin'):'';$('search').value=query;const requestedPage=Number(params.get('page')||1);page=Number.isSafeInteger(requestedPage)&&requestedPage>=1&&requestedPage<=100000?requestedPage-1:0;const view=params.get('view');const id=params.get('post');if(id||view==='post'){if(config)openPost(id,{history:false,scroll:false});else navigate('post',{history:false,scroll:false});}else if(view==='write'){if(config)writePost({history:false,scroll:false});else navigate('write',{history:false,scroll:false});}else navigate(view||'home',{history:false,scroll:false});
 }
 async function loadPostRecommendation(id,authorId){
- if(activePostId!==id||!$('dialog').open)return;
+ const request=postPageRequest;
+ if(activePostId!==id||request!==postPageRequest)return;
  try{
  const [postResult,mineResult]=await Promise.all([db('posts?'+new URLSearchParams({select:'recommendation_count',id:'eq.'+id,status:'eq.published'})),session?.user?db('post_recommendations?'+new URLSearchParams({select:'post_id',post_id:'eq.'+id,user_id:'eq.'+session.user.id})):Promise.resolve({data:[]})]);
- if(activePostId!==id||!$('dialog').open)return;
+ if(activePostId!==id||request!==postPageRequest)return;
  const post=postResult.data[0];if(!post||!Number.isInteger(post.recommendation_count))throw new Error('recommendation_count_missing');recommendationsReady=true;
  const selected=mineResult.data.length>0;const own=authorId===session?.user?.id;
  $('postrecommendation').innerHTML='<button class="recommend-button'+(selected?' recommended':'')+'" id="recommendbutton" aria-pressed="'+selected+'"'+(own?' disabled':'')+'><span>♡</span> 추천 '+post.recommendation_count+(selected?' · 취소':'')+'</button><p class="subtle">'+(own?'내 글에는 추천할 수 없어요.':session?.user?'회원당 한 번 추천할 수 있어요.':'로그인하면 좋은 글에 추천을 남길 수 있어요.')+'</p><p class="subtle" id="recommenderror" role="alert"></p>';
  $('recommendbutton').onclick=()=>toggleRecommendation(id,authorId,selected);
- }catch{if(activePostId===id&&$('dialog').open)$('postrecommendation').innerHTML='<p class="subtle">추천 기능을 준비하고 있어요.</p>';}
+ }catch{if(activePostId===id&&request===postPageRequest)$('postrecommendation').innerHTML='<p class="subtle">추천 기능을 준비하고 있어요.</p>';}
 }
 async function toggleRecommendation(id,authorId,selected){
  if(!session?.user)return authModal();if(voteBusy||activePostId!==id||authorId===session.user.id)return;
