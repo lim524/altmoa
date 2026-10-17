@@ -42,7 +42,7 @@ test('upstream failure never becomes fabricated market data', async () => {
 test('market success has shared CDN cache and source timestamp', async () => {
   const original = globalThis.fetch;
   globalThis.fetch = async url => Response.json(String(url).includes('/ticker/') ? [{market:'KRW-SUI',trade_price:100,signed_change_rate:.12,acc_trade_price_24h:123}] : [{market:'KRW-SUI',korean_name:'수이'}]);
-  try { const response = await GET(new Request('https://altmoa.example/api/index?route=market')); const data = await response.json(); assert.equal(data.source,'Upbit'); assert.equal(data.coins[0].name,'수이'); assert.equal(data.coins[0].change,12); assert.match(response.headers.get('Cache-Control'),/s-maxage=30/); assert.ok(Date.parse(data.fetchedAt)); }
+  try { const response = await GET(new Request('https://altmoa.example/api/index?route=market&exchange=upbit')); const data = await response.json(); assert.equal(data.source,'Upbit'); assert.equal(data.coins[0].name,'수이'); assert.equal(data.coins[0].change,12); assert.match(response.headers.get('Cache-Control'),/s-maxage=30/); assert.ok(Date.parse(data.fetchedAt)); }
   finally { globalThis.fetch = original; }
 });
 

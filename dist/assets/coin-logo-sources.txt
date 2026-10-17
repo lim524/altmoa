@@ -2,7 +2,8 @@ Coin logo sources (2026-10-17)
 
 Web3 Icons: https://github.com/0xa3k5/web3icons
 @web3icons/core 4.0.58 and @web3icons/common 0.11.53, MIT.
-Local SVGs retained without changing their artwork. License: /assets/web3icons-LICENSE.txt
+Local token and exchange SVGs retained without changing their artwork.
+Exchange marks: Binance, Bithumb, Upbit from the same MIT package. License: /assets/web3icons-LICENSE.txt
 
 Official Optimism token image:
 https://ethereum-optimism.github.io/data/OP/logo.png

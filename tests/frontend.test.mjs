@@ -21,11 +21,11 @@ test('unconnected community never displays demo posts or fake login', async()=>{
 
 test('market failure after a successful response explicitly labels old data',async()=>{
   let fail=false;const f=fixture(async()=>{if(fail)throw new Error('network');return Response.json(market)});
-  await f.run('loadMarket()');assert.match(f.node('coins').innerHTML,/수이/);fail=true;await f.run('loadMarket()');assert.match(f.node('markettime').textContent,/이전 데이터/);assert.match(f.node('ticker').innerHTML,/갱신 지연/);
+  await f.run("loadMarket('upbit')");assert.match(f.node('coins').innerHTML,/수이/);fail=true;await f.run("loadMarket('upbit')");assert.match(f.node('markettime').textContent,/이전 데이터/);assert.match(f.node('ticker').innerHTML,/갱신 지연/);
 });
 
 test('favorites persist and nonmatching search does not show fabricated results',async()=>{
-  const f=fixture(async()=>Response.json(market));await f.run('loadMarket()');f.run("star('SUI');showSaved()");assert.match(f.data.get('altmoa-stars'),/SUI/);f.run("query='no-such-coin';savedOnly=false;renderCoins()");assert.match(f.node('coins').innerHTML,/검색 결과가 없습니다/);
+  const f=fixture(async()=>Response.json(market));await f.run("loadMarket('upbit')");f.run("star('SUI');showSaved()");assert.match(f.data.get('altmoa-stars'),/SUI/);f.run("query='no-such-coin';savedOnly=false;renderCoins()");assert.match(f.node('coins').innerHTML,/검색 결과가 없습니다/);
 });
 
 test('untrusted post titles and nicknames are escaped',async()=>{
@@ -46,9 +46,9 @@ test('successful DB post submission reloads feed and opens the saved post',async
 
 test('switching exchanges clears old prices and ignores a late response',async()=>{
   let resolveFirst;const f=fixture(url=>String(url).includes('binance')?Promise.resolve(Response.json({...market,id:'binance',source:'Binance',currency:'USDT',coins:[{...market.coins[0],market:'SUIUSDT',exchange:'binance',quote:'USDT',price:2}]})):new Promise(resolve=>{resolveFirst=resolve}));
-  const first=f.run('loadMarket()');f.node('marketexchange').value='binance';await f.run('loadMarket()');resolveFirst(Response.json(market));await first;
+  const first=f.run("loadMarket('upbit')");await f.run("loadMarket('binance')");resolveFirst(Response.json(market));await first;
   assert.match(f.node('coins').innerHTML,/2 USDT/);assert.equal(f.run('selectedExchange'),'binance');
-  f.node('marketexchange').value='bithumb';const next=f.run('loadMarket()');assert.doesNotMatch(f.node('coins').innerHTML,/2 USDT/);resolveFirst(Response.json({error:'unavailable'},{status:502}));await next;assert.match(f.node('coins').innerHTML,/연결하지 못했습니다/);
+  const next=f.run("loadMarket('bithumb')");assert.doesNotMatch(f.node('coins').innerHTML,/2 USDT/);resolveFirst(Response.json({error:'unavailable'},{status:502}));await next;assert.match(f.node('coins').innerHTML,/연결하지 못했습니다/);
 });
 
 test('coin images escape URLs and stop after all fallback images fail',()=>{

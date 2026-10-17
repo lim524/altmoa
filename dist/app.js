@@ -7,8 +7,8 @@ let config = null, session = read('altmoa-session', null, sessionStorage), refre
 let coins = [], posts = [], favorites = read('altmoa-stars', []), sort = 'volume', query = '', category = '전체', coinFilter = '', savedOnly = false;
 let page = 0, total = 0, feedRequest = 0, marketBusy = false, activePostId = null, moderator = false;
 let lastFetchedAt = null, marketFailed = false;
-let selectedExchange='upbit',loadingExchange=null,marketRequest=0,detailRequest=0;
-let marketInfo={id:'upbit',name:'업비트',quote:'KRW',source:'Upbit',changeLabel:'전일 종가 대비 (UTC)'};
+let selectedExchange='binance',loadingExchange=null,marketRequest=0,detailRequest=0;
+let marketInfo={id:'binance',name:'바이낸스',quote:'USDT',source:'Binance',changeLabel:'최근 24시간 대비'};
 const exchangeOptions=[['upbit','업비트','kr','KRW'],['bithumb','빗썸','kr','KRW'],['binance','바이낸스','global','USDT']];
 const priceLabel=(n,quote='KRW')=>quote==='KRW'?won(n):new Intl.NumberFormat('en-US',{maximumFractionDigits:n<1?8:4}).format(n)+' '+quote;
 const favoriteKey=c=>(c.exchange||selectedExchange)+':'+c.market;
@@ -124,8 +124,9 @@ function attentionDetail(symbol){
  }).join('');
  modal('<div class="eyebrow">'+(attentionScope==='internal'?'ALTMOA COMMUNITY':'EXTERNAL COMMUNITY')+'</div><h2 class="coin-detail-heading">'+coinIcon(symbol)+escapeHTML(item.name)+' <span class="subtle">'+escapeHTML(symbol)+'</span></h2><p>선택한 기간에 '+Number(item.mentions)+'개의 중복 제외 언급 글이 관측됐어요.</p><p class="subtle">'+(item.growth==null?(attentionScope==='internal'?'내부 관심도는 언급 글 수를 제공합니다.':'평소 대비 급증률은 충분한 이력이 쌓인 뒤 표시합니다.'):'직전 7일의 같은 길이 기간 평균 대비 '+escapeHTML(item.growth)+'배입니다.')+'</p><ul class="attention-links">'+links+'</ul>');
 }
-async function loadMarket() {
-  const exchange=$('marketexchange').value||selectedExchange;
+async function loadMarket(exchange=selectedExchange) {
+  if(!exchangeOptions.some(e=>e[0]===exchange))return;
+  document.querySelectorAll('[data-exchange]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.exchange===exchange)));
   if(marketBusy&&loadingExchange===exchange)return;
   const requestId=++marketRequest;marketBusy=true;loadingExchange=exchange;
   if(selectedExchange!==exchange){selectedExchange=exchange;coins=[];lastFetchedAt=null;marketFailed=false;$('coins').innerHTML='<tr><td colspan="6" class="loading">선택한 거래소 시세를 불러오고 있어요.</td></tr>';$('ticker').innerHTML='<span class="inline-status">시세 연결 중...</span>';$('marketbadge').textContent='연결 중';$('markettime').textContent='연결 중';}
@@ -147,13 +148,6 @@ async function loadMarket() {
     if(!coins.length){$('coins').innerHTML='<tr><td colspan="6" class="empty">선택한 거래소에 연결하지 못했습니다.</td></tr>';$('ticker').innerHTML='<span class="inline-status">선택한 거래소 시세 연결 지연</span>';}
     else $('ticker').innerHTML='<span class="inline-status">시세 갱신 지연 · 마지막 조회 '+escapeHTML(time(lastFetchedAt))+' KST</span>';
   } finally {if(requestId===marketRequest){marketBusy=false;loadingExchange=null;}}
-}
-function changeMarketRegion(){
- const region=$('marketregion').value;
- const options=exchangeOptions.filter(e=>region==='all'||e[2]===region);
- const previous=$('marketexchange').value;
- $('marketexchange').innerHTML=options.map(e=>'<option value="'+e[0]+'">'+e[1]+' · '+e[3]+'</option>').join('');
- $('marketexchange').value=options.some(e=>e[0]===previous)?previous:options[0][0];loadMarket();
 }
 function renderCoins() {
   const list = coins.filter(c => c.symbol !== 'BTC' && (!savedOnly || isFavorite(c)) && (!query || (c.name + ' ' + c.symbol).toLowerCase().includes(query.toLowerCase()))).sort((a, b) => sort === 'change' ? b.change - a.change : b.volume24h - a.volume24h);
@@ -259,7 +253,6 @@ function navigate(section) {
 async function init() {
   renderLounges(); updateAuth();
   document.querySelectorAll('[data-attention-scope]').forEach(b => b.onclick = () => { attentionScope=b.dataset.attentionScope;document.querySelectorAll('[data-attention-scope]').forEach(x=>x.classList.toggle('on',x===b));loadAttention(); });
-  $('marketregion').onchange=changeMarketRegion; $('marketexchange').onchange=()=>loadMarket();
   $('attentionregion').onchange=loadAttention; $('attentionperiod').onchange=loadAttention;
   document.querySelectorAll('[data-nav],[data-side]').forEach(b => b.onclick = () => navigate(b.dataset.nav || b.dataset.side));
   document.querySelectorAll('[data-sort]').forEach(b => b.onclick = () => { sort = b.dataset.sort; document.querySelectorAll('[data-sort]').forEach(x => x.classList.toggle('on', x === b)); renderCoins(); });

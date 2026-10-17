@@ -22,7 +22,7 @@ export async function GET(request) {
     const comparison=await compareAsset(asset);
     return comparison?json(comparison,200,'public, max-age=0, s-maxage=30, stale-while-revalidate=60'):json({error:'Unknown asset'},400);
   }
-  const exchange=u.searchParams.get('exchange')||'upbit';
+  const exchange=u.searchParams.get('exchange')||'binance';
   if(!EXCHANGES[exchange])return json({error:'지원하지 않는 거래소입니다.'},400);
   try {
     return json(await fetchExchange(exchange),200,'public, max-age=0, s-maxage=30, stale-while-revalidate=60');
