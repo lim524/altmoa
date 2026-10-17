@@ -1,21 +1,22 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {aiScheduleDue} from '../lib/ai-schedule.mjs';
+import {aiScheduleDue,aiWriterIndex} from '../lib/ai-schedule.mjs';
 import {runAIPublisher} from '../lib/ai-publisher.mjs';
 import {runAIReplies} from '../lib/ai-replies.mjs';
 import {AI_WRITERS,generateWriterReply,estimateWriterInput} from '../lib/ai-writers.mjs';
 
-test('randomized wake-up is stable across retries, varies by slot and does not fix all actions to five-minute marks',()=>{
- const secret='schedule-test-private-1234567890123456789',offsets=[],replyOffsets=[];
- for(let slot=6000000;slot<6000100;slot++){
-  const due=kind=>Array.from({length:5},(_,minute)=>minute).find(minute=>aiScheduleDue(kind,slot*300000+minute*60000,secret));
-  const minute=due('post');offsets.push(minute);replyOffsets.push(due('reply'));
-  assert.equal(aiScheduleDue('post',slot*300000+minute*60000,secret),true);
-  if(minute)assert.equal(aiScheduleDue('post',slot*300000+minute*60000-1,secret),false);
+test('independent random minutes allow quiet windows and bursts, with stable retries and no six-writer cycle',()=>{
+ const secret='schedule-test-private-1234567890123456789',post=[],reply=[],writers=[];
+ for(let minute=30000000;minute<30010000;minute++){
+  const at=minute*60000,due=aiScheduleDue('post',at,secret);post.push(due);reply.push(aiScheduleDue('reply',at,secret));
+  assert.equal(aiScheduleDue('post',at+59000,secret),due);
+  const writer=aiWriterIndex('post',at,6,secret);assert.equal(aiWriterIndex('post',at+59000,6,secret),writer);if(due)writers.push(writer);
  }
- assert.equal(new Set(offsets).size,5);assert.notDeepEqual(offsets,replyOffsets);
- const gaps=offsets.slice(1).map((offset,i)=>5+offset-offsets[i]);assert.ok(new Set(gaps).size>3);
- assert.ok(gaps.every(gap=>gap>=1&&gap<=9));
+ const events=post.flatMap((due,i)=>due?[i]:[]),gaps=events.slice(1).map((m,i)=>m-events[i]);
+ assert.ok(events.length>1500&&events.length<2500);assert.ok(gaps.includes(1));assert.ok(gaps.some(n=>n>15));
+ const windows=Array.from({length:2000},(_,i)=>post.slice(i*5,i*5+5).filter(Boolean).length);
+ assert.ok(windows.includes(0));assert.ok(windows.some(n=>n>=3));assert.notDeepEqual(post,reply);
+ assert.equal(new Set(writers).size,6);assert.ok(writers.some((w,i)=>i&&w===writers[i-1]));assert.ok(writers.some((w,i)=>i>=6&&w!==writers[i-6]));
 });
 
 test('early minute polls do not claim jobs, read the database or invoke models',async()=>{
