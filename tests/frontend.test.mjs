@@ -2,13 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import fs from 'node:fs';
+const communityCode=fs.readFileSync(new URL('../dist/community.js',import.meta.url),'utf8');
 const code = fs.readFileSync(new URL('../dist/app.js',import.meta.url),'utf8').replace(/init\(\);\s*$/, '');
 function fixture(handler) {
   const nodes = new Map(), data = new Map();
   const storage = { getItem:k=>data.get(k)||null, setItem:(k,v)=>data.set(k,v) };
-  const element = id => { if (!nodes.has(id)) nodes.set(id,{id,textContent:'',innerHTML:'',value:'',style:{},isConnected:true,disabled:false,classList:{toggle(){},contains(){return false},add(){}},addEventListener(){},showModal(){this.open=true},close(){this.open=false},scrollIntoView(){},insertAdjacentHTML(_,html){this.innerHTML+=html}});return nodes.get(id); };
-  const context = vm.createContext({ document:{getElementById:element,querySelectorAll:()=>[],addEventListener(){},body:{classList:{toggle(){},contains(){return false},add(){}}}}, window:{scrollTo(){}}, localStorage:storage,sessionStorage:storage,setTimeout:()=>1,clearTimeout(){},setInterval(){},URLSearchParams,AbortSignal,location:{origin:'https://altmoa.example',pathname:'/',search:'',hash:''},history:{replaceState(){}},fetch:handler,FormData:class{constructor(fields){this.fields=fields}get(k){return this.fields[k]}} });
-  vm.runInContext(code,context);
+  const element = id => { if (!nodes.has(id)) nodes.set(id,{id,textContent:'',innerHTML:'',value:'',style:{},isConnected:true,disabled:false,classList:{toggle(){},contains(){return false},add(){}},addEventListener(){},showModal(){this.open=true},close(){this.open=false},scrollIntoView(){},setAttribute(){},insertAdjacentHTML(_,html){this.innerHTML+=html}});return nodes.get(id); };
+  const views=[['homepage','home'],['boardpanel','board'],['marketpanel','market'],['rankpanel','rank']].map(([id,view])=>Object.assign(element(id),{dataset:{view},hidden:view!=='home'}));
+  const context = vm.createContext({ document:{getElementById:element,querySelectorAll:selector=>selector==='[data-view]'?views:[],addEventListener(){},body:{classList:{toggle(){},contains(){return false},add(){}}}}, window:{scrollTo(){}}, localStorage:storage,sessionStorage:storage,setTimeout:()=>1,clearTimeout(){},setInterval(){},URLSearchParams,AbortSignal,location:{origin:'https://altmoa.example',pathname:'/',search:'',hash:''},history:{replaceState(){},pushState(state,title,path){this.lastPath=path}},fetch:handler,FormData:class{constructor(fields){this.fields=fields}get(k){return this.fields[k]}} });
+  vm.runInContext(communityCode+'\n'+code,context);
   return { run:source=>vm.runInContext(source,context),node:element,data };
 }
 const market = { id:'upbit',name:'업비트',source:'Upbit',currency:'KRW', fetchedAt:'2026-10-17T08:00:00Z',coins:[{symbol:'SUI',market:'KRW-SUI',exchange:'upbit',quote:'KRW',name:'수이',price:100,change:-2,volume24h:1000000000}] };
@@ -57,4 +59,21 @@ test('coin images escape URLs and stop after all fallback images fail',()=>{
  assert.doesNotMatch(f.run(`coinIcon('', 'BAD', 'https://evil.example/logo.png')`),/<img/);
  f.run(`testImage={dataset:{fallback:JSON.stringify(['https://static.upbit.com/logos/SUI.png'])},parentElement:{classList:{remove(){}}},getAttribute(){return this.src},src:'/assets/coins/SUI.svg',remove(){this.removed=true}};coinImageError(testImage);coinImageError(testImage)`);
  assert.equal(f.run('testImage.removed'),true);assert.equal(f.run('failedCoinImages.size'),2);
+});
+
+test('home rankings query each complete board by recommendation count, not recent-page comments',async()=>{
+ const requests=[];const f=fixture(async url=>{requests.push(new URL(url));return Response.json([{id:'00000000-0000-0000-0000-000000000001',title:'<svg onload=alert(1)>추천 글',category:'분석',recommendation_count:12,profiles:{nickname:'회원'},comments:[{count:99}]}]);});configure(f);await f.run('loadPopular()');
+ assert.equal(requests.length,5);assert.deepEqual(requests.map(u=>u.searchParams.get('category')),[null,'eq.자유','eq.분석','eq.소식','eq.질문']);for(const u of requests){assert.equal(u.searchParams.get('order'),'recommendation_count.desc,created_at.desc,id.desc');assert.equal(u.searchParams.get('recommendation_count'),'gt.0');assert.equal(u.searchParams.get('limit'),'5');assert.equal(u.searchParams.has('offset'),false);}
+ assert.match(f.node('popularall').innerHTML,/추천 <b>12/);assert.doesNotMatch(f.node('popularall').innerHTML,/<svg/);
+});
+test('a missing recommendation migration keeps latest posts usable and never fabricates popular ranks',async()=>{
+ const f=fixture(async url=>new URL(url).searchParams.get('select')?.includes('recommendation_count')?Response.json({message:'column posts.recommendation_count does not exist'},{status:400}):Response.json([{id:'00000000-0000-0000-0000-000000000001',title:'실제 최신 글',category:'자유',created_at:'2026-10-17T08:00:00Z'}]));configure(f);await f.run('loadPopular()');assert.match(f.node('popularall').innerHTML,/인기글을 준비/);assert.doesNotMatch(f.node('popularall').innerHTML,/실제 최신 글/);await f.run('loadPosts()');assert.match(f.node('posts').innerHTML,/실제 최신 글/);
+});
+test('recommendation writes use the signed-in user and persist a toggle before refreshing counts',async()=>{
+ const id='00000000-0000-0000-0000-000000000001';let count=0;let selected=false;const mutations=[];
+ const f=fixture(async(url,options)=>{if(options.method==='POST'){mutations.push(JSON.parse(options.body));count++;selected=true;return new Response(null,{status:201});}if(options.method==='DELETE'){mutations.push(String(url));count--;selected=false;return new Response(null,{status:204});}if(String(url).includes('post_recommendations?'))return Response.json(selected?[{post_id:id}]:[]);return Response.json([{recommendation_count:count}]);});configure(f);f.run(`activeView='rank';activePostId='${id}';document.getElementById('dialog').showModal()`);
+ await f.run(`loadPostRecommendation('${id}','other-author')`);await f.run(`toggleRecommendation('${id}','other-author',false)`);assert.equal(mutations[0].user_id,'user-123');assert.equal(mutations[0].post_id,id);assert.match(f.node('postrecommendation').innerHTML,/추천 1 · 취소/);await f.run(`toggleRecommendation('${id}','other-author',true)`);assert.match(mutations[1],/user_id=eq.user-123/);assert.equal(count,0);
+});
+test('view navigation separates boards, market and interest and retains shareable board state',async()=>{
+ const f=fixture(async()=>Response.json([]));configure(f);f.run("openBoard('분석','popular')");await new Promise(r=>setImmediate(r));assert.equal(f.run('activeView'),'board');assert.equal(f.run('postSort'),'popular');assert.equal(f.node('boardtitle').textContent,'분석·인사이트');assert.equal(f.run('category'),'분석');assert.equal(f.node('boardpanel').hidden,false);assert.equal(f.node('homepage').hidden,true);assert.match(f.run('history.lastPath'),/view=board/);f.run("coins=[{symbol:'SUI',name:'수이',price:1,change:0,volume24h:1}];navigate('market')");assert.equal(f.run('activeView'),'market');assert.equal(f.node('marketpanel').hidden,false);assert.equal(f.node('boardpanel').hidden,true);f.run("location.search='?view=board&category=질문&sort=popular';restoreCommunityRoute()");assert.equal(f.run('category'),'질문');assert.equal(f.run('postSort'),'popular');
 });
