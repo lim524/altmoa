@@ -63,13 +63,13 @@ test('coin images escape URLs and stop after all fallback images fail',()=>{
  assert.equal(f.run('testImage.removed'),true);assert.equal(f.run('failedCoinImages.size'),2);
 });
 
-test('home rankings query each complete board by recommendation count, not recent-page comments',async()=>{
+test('home lists query each board by creation time and include posts without recommendations',async()=>{
  const requests=[];const f=fixture(async url=>{requests.push(new URL(url));return Response.json([{id:'00000000-0000-0000-0000-000000000001',title:'<svg onload=alert(1)>추천 글',category:'분석',recommendation_count:12,profiles:{nickname:'회원'},comments:[{count:99}]}]);});configure(f);await f.run('loadPopular()');
- assert.equal(requests.length,5);assert.deepEqual(requests.map(u=>u.searchParams.get('category')),[null,'eq.자유','eq.분석','eq.소식','eq.질문']);for(const u of requests){assert.equal(u.searchParams.get('order'),'recommendation_count.desc,created_at.desc,id.desc');assert.equal(u.searchParams.get('recommendation_count'),'gt.0');assert.equal(u.searchParams.get('limit'),'5');assert.equal(u.searchParams.has('offset'),false);}
+ assert.equal(requests.length,5);assert.deepEqual(requests.map(u=>u.searchParams.get('category')),[null,'eq.자유','eq.분석','eq.소식','eq.질문']);for(const u of requests){assert.equal(u.searchParams.get('order'),'created_at.desc,id.desc');assert.equal(u.searchParams.has('recommendation_count'),false);assert.equal(u.searchParams.get('limit'),'5');assert.equal(u.searchParams.has('offset'),false);}
  assert.match(f.node('popularall').innerHTML,/추천 <b>12/);assert.doesNotMatch(f.node('popularall').innerHTML,/<svg/);
 });
-test('a missing recommendation migration keeps latest posts usable and never fabricates popular ranks',async()=>{
- const f=fixture(async url=>new URL(url).searchParams.get('select')?.includes('recommendation_count')?Response.json({message:'column posts.recommendation_count does not exist'},{status:400}):Response.json([{id:'00000000-0000-0000-0000-000000000001',title:'실제 최신 글',category:'자유',created_at:'2026-10-17T08:00:00Z'}]));configure(f);await f.run('loadPopular()');assert.match(f.node('popularall').innerHTML,/인기글을 준비/);assert.doesNotMatch(f.node('popularall').innerHTML,/실제 최신 글/);await f.run('loadPosts()');assert.match(f.node('posts').innerHTML,/실제 최신 글/);
+test('home latest lists remain usable when recommendation counts are unavailable',async()=>{
+ const f=fixture(async url=>new URL(url).searchParams.get('select')?.includes('recommendation_count')?Response.json({message:'column posts.recommendation_count does not exist'},{status:400}):Response.json([{id:'00000000-0000-0000-0000-000000000001',title:'실제 최신 글',category:'자유',created_at:'2026-10-17T08:00:00Z'}]));configure(f);await f.run('loadPopular()');assert.match(f.node('popularall').innerHTML,/실제 최신 글/);assert.doesNotMatch(f.node('popularall').innerHTML,/NaN/);await f.run('loadPosts()');assert.match(f.node('posts').innerHTML,/실제 최신 글/);
 });
 test('recommendation writes use the signed-in user and persist a toggle before refreshing counts',async()=>{
  const id='00000000-0000-0000-0000-000000000001';let count=0;let selected=false;const mutations=[];

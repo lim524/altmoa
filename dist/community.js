@@ -4,20 +4,20 @@ let activeView='home',postSort='latest',popularRequest=0,summaryRequest=0,recomm
 const POPULAR_SELECT='id,author_id,title,category,created_at,recommendation_count,profiles!posts_author_id_fkey(nickname),comments(count)';
 function boardLabel(key){return BOARDS.find(b=>b.key===key)?.name||'전체 이야기';}
 function renderPopularShell(){
- $('popularboards').innerHTML=BOARDS.map(board=>'<section class="panel popular-board"><div class="section-head"><div><h2>'+board.name+'</h2><p>'+board.description+'</p></div><button class="tiny-link" onclick="openBoard(\''+board.key+'\',\'popular\')">더보기 →</button></div><div id="popular-'+board.key+'" class="popular-list"><p class="loading">불러오는 중입니다.</p></div><button class="board-entry" onclick="openBoard(\''+board.key+'\')">게시판 둘러보기 →</button></section>').join('');
+ $('popularboards').innerHTML=BOARDS.map(board=>'<section class="panel popular-board"><div class="section-head"><div><h2>'+board.name+'</h2><p>'+board.description+'</p></div><button class="tiny-link" onclick="openBoard(\''+board.key+'\',\'latest\')">더보기 →</button></div><div id="popular-'+board.key+'" class="popular-list"><p class="loading">불러오는 중입니다.</p></div><button class="board-entry" onclick="openBoard(\''+board.key+'\')">게시판 둘러보기 →</button></section>').join('');
 }
 function popularRows(rows){
- return rows.map((post,index)=>'<a class="popular-post" href="/?view=post&amp;post='+post.id+'" onclick="return followPost(event,\''+post.id+'\')"><span class="popular-rank">'+(index+1)+'</span><span class="popular-post-copy"><span class="popular-title">'+escapeHTML(post.title)+'</span><small>'+escapeHTML(boardLabel(post.category))+' · '+escapeHTML(post.profiles?.nickname||'알트모아 회원')+memberBadge(post.author_id)+' · 댓글 '+Number(post.comments?.[0]?.count||0)+'</small></span><span class="recommend-count">추천 <b>'+Number(post.recommendation_count)+'</b></span></a>').join('')||'<div class="popular-empty">아직 추천받은 글이 없어요.<br>좋은 이야기에 첫 추천을 남겨주세요.</div>';
+ return rows.map((post,index)=>'<a class="popular-post" href="/?view=post&amp;post='+post.id+'" onclick="return followPost(event,\''+post.id+'\')"><span class="popular-rank">'+(index+1)+'</span><span class="popular-post-copy"><span class="popular-title">'+escapeHTML(post.title)+'</span><small>'+escapeHTML(boardLabel(post.category))+' · '+escapeHTML(post.profiles?.nickname||'알트모아 회원')+memberBadge(post.author_id)+' · '+time(post.created_at)+' · 댓글 '+Number(post.comments?.[0]?.count||0)+'</small></span><span class="recommend-count">추천 <b>'+Number(post.recommendation_count||0)+'</b></span></a>').join('')||'<div class="popular-empty">아직 작성된 글이 없어요.<br>첫 이야기를 나눠보세요.</div>';
 }
 async function loadPopular(){
  const token=++popularRequest;
  if(!config?.communityReady){['popularall',...BOARDS.map(b=>'popular-'+b.key)].forEach(id=>$(id).innerHTML='<div class="popular-empty">커뮤니티 연결을 준비하고 있어요.</div>');return;}
  const groups=['전체',...BOARDS.map(b=>b.key)];
- const results=await Promise.allSettled(groups.map(async key=>{const params=new URLSearchParams({select:POPULAR_SELECT,status:'eq.published',recommendation_count:'gt.0',order:'recommendation_count.desc,created_at.desc,id.desc',limit:'5'});if(key!=='전체')params.set('category','eq.'+key);return (await db('posts?'+params)).data;}));
+ const results=await Promise.allSettled(groups.map(async key=>{const params=new URLSearchParams({select:POPULAR_SELECT,status:'eq.published',order:'created_at.desc,id.desc',limit:'5'});if(key!=='전체')params.set('category','eq.'+key);try{const result=await db('posts?'+params);recommendationsReady=true;return result.data;}catch(error){if(!/recommendation_count/i.test(error.message||''))throw error;recommendationsReady=false;params.set('select',POPULAR_SELECT.replace('recommendation_count,',''));return (await db('posts?'+params)).data;}}));
  if(token!==popularRequest)return;
  results.forEach((result,i)=>{const target=i===0?$('popularall'):$('popular-'+groups[i]);
- if(result.status==='fulfilled'){recommendationsReady=true;target.innerHTML=popularRows(result.value);loadMemberBadges(result.value.map(post=>post.author_id));}
- else {if(/recommendation_count|schema cache|does not exist/i.test(result.reason?.message||''))recommendationsReady=false;target.innerHTML='<div class="popular-empty">인기글을 준비하고 있어요.<br>게시판에서 먼저 이야기를 나눠보세요.</div>';}
+ if(result.status==='fulfilled'){target.innerHTML=popularRows(result.value);loadMemberBadges(result.value.map(post=>post.author_id));}
+ else {if(/recommendation_count|schema cache|does not exist/i.test(result.reason?.message||''))recommendationsReady=false;target.innerHTML='<div class="popular-empty">최신 글을 불러오지 못했어요.<br>잠시 후 다시 시도해 주세요.</div>';}
  });
 }
 async function loadAttentionSummary(){
