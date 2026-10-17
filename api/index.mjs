@@ -1,4 +1,5 @@
 import { normalizeMarket } from '../lib/market.mjs';
+import { getAttention } from '../lib/attention-api.mjs';
 const json = (body, status = 200, cache = 'no-store') => Response.json(body, { status, headers: { 'Cache-Control': cache, 'X-Content-Type-Options': 'nosniff' } });
 export async function GET(request) {
   const u = new URL(request.url);
@@ -14,7 +15,7 @@ export async function GET(request) {
     // Only a validated public anon/publishable key is sent to clients.
     return json({ communityReady: ready, supabaseUrl: ready ? url : '', supabaseKey: ready ? key : '' });
   }
-  if (route === 'attention') return json({ status: 'not_connected', sources: [], items: [], message: '외부 관심도 수집 준비 중입니다. 수집된 원문이 없는 순위는 표시하지 않습니다.' }, 200, 'public, max-age=0, s-maxage=300');
+  if (route === 'attention') return json(await getAttention(u));
   if (route !== 'market') return json({ error: 'Not found' }, 404);
   try {
     const options = { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(8000) };

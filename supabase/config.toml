@@ -1,0 +1,2 @@
+[functions.collect-attention]
+verify_jwt = false

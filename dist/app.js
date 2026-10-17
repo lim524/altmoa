@@ -20,7 +20,7 @@ function coinIcon(symbol) {
 function toast(message) { $('toast').textContent = message; $('toast').style.display = 'block'; clearTimeout(window.toastTimer); window.toastTimer = setTimeout(() => $('toast').style.display = 'none', 2800); }
 function modal(html, postId = null) { activePostId = postId; $('modalcontent').innerHTML = html; if (!$('dialog').open) $('dialog').showModal(); }
 function info(title, body) { modal('<div class="eyebrow">ALTMOA</div><h2>' + escapeHTML(title) + '</h2><p>' + escapeHTML(body) + '</p>'); }
-function method() { info('관심도 집계 안내', '현재 외부 관심도 수집은 연결되지 않았습니다. 연결된 출처가 없으므로 언급량·급상승 배수·종합점수를 표시하지 않습니다. 시세 표는 업비트 원화 마켓의 실제 응답을 사용하고, 관심도 순위와 분리합니다. 전일 대비 등락률은 UTC 기준 전일 종가 대비이며, 거래대금은 최근 24시간 기준입니다.'); }
+function method() { info('관심도 집계 안내', '외부 커뮤니티와 알트모아 내부 통계를 분리합니다. 현재 디시·코인판은 이용 동의 확보 전, X·Reddit은 API 연결 전이라 외부 수집을 실행하지 않습니다. 내부 통계는 최근 게시글의 제목과 코인 태그로 판별하며 같은 코인의 동일 제목은 한 번 집계합니다. 댓글·작성자 수는 집계하지 않고 초기 사전에 등록된 코인만 인식합니다. 외부 급증 배수는 8일 이상 이력, 최근 8일 수집 성공률 90% 이상, 30분 초과 공백 없음, 현재 5건 이상·평소 평균 1건 이상의 조건에서만 제공합니다. 관심도는 매수 신호가 아닙니다.'); }
 function rules() { info('함께 지켜요', '홍보 도배, 사칭, 수익 보장, 개인정보 공개, 불법·음란 콘텐츠는 게시할 수 없습니다. 문제가 있는 글·댓글은 신고해 주세요. 작성자는 자신의 글·댓글을 삭제할 수 있고 운영자는 신고 내용을 확인해 숨김 처리할 수 있습니다. 사진 첨부와 외부 원문 수집은 아직 제공하지 않습니다. 관심 코인은 이 브라우저에 저장됩니다.'); }
 function errorMessage(error) { const m = error.message || ''; if (/60초|10초/.test(m)) return m; if (/invalid login credentials/i.test(m)) return '이메일 또는 비밀번호를 확인해 주세요.'; if (/email not confirmed/i.test(m)) return '이메일 인증을 완료한 뒤 로그인해 주세요.'; if (/already registered/i.test(m)) return '이미 가입된 이메일입니다.'; if (/rate limit|too many/i.test(m)) return '요청이 많아요. 잠시 후 다시 시도해 주세요.'; if (/duplicate key|23505/.test(m)) return '이미 신고한 항목입니다.'; if (/JWT|token|로그인/.test(m)) return '다시 로그인해 주세요.'; if (/schema cache|does not exist/i.test(m)) return '게시판 연결을 준비하고 있습니다.'; if (/fetch|network|timeout|abort/i.test(m)) return '연결하지 못했어요. 잠시 후 다시 시도해 주세요.'; if (error.status === 401 || error.status === 403) return '접근 권한을 확인해 주세요.'; return '요청을 처리하지 못했어요. 잠시 후 다시 시도해 주세요.'; }
 async function fetchJSON(url, options = {}) {
@@ -77,12 +77,38 @@ function passwordModal() {
   modal('<h2>새 비밀번호 설정</h2><form id="passwordform"><label>새 비밀번호<input name="password" type="password" minlength="8" maxlength="128" required autocomplete="new-password"></label><button class="solid wide">비밀번호 변경</button><p id="passwordstatus" role="alert"></p></form>');
   $('passwordform').onsubmit = async event => { event.preventDefault(); const button = event.target.querySelector('button'); button.disabled = true; try { const token = await freshToken(); await fetchJSON(config.supabaseUrl + '/auth/v1/user', { method: 'PUT', headers: { apikey: config.supabaseKey, Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify({ password: new FormData(event.target).get('password') }) }); $('dialog').close(); toast('비밀번호를 변경했어요.'); } catch (error) { if ($('passwordstatus')) $('passwordstatus').textContent = errorMessage(error); } finally { if (button.isConnected) button.disabled = false; } };
 }
+let attentionScope = 'external', attentionRequest = 0, attentionRows = [];
+const attentionStatus = {permission_required:'동의 필요',api_required:'API 연결 필요',collecting:'수집 중',paused:'일시 중지',error:'연결 오류',partial:'일부 수집',stale:'갱신 지연',not_connected:'미연결'};
+async function loadAttention() {
+ const requestId=++attentionRequest;
+ attentionRows=[]; $('attentioncontent').className='connection'; $('attentioncontent').textContent='관심도를 불러오는 중입니다.';
+ const params=new URLSearchParams({scope:attentionScope,hours:$('attentionperiod').value,region:$('attentionregion').value});
+ try {
+  const {data}=await fetchJSON('/api/attention?'+params);if(requestId!==attentionRequest)return;
+  attentionRows=data.items||[];
+  $('attentionbadge').textContent=attentionScope==='internal'?'내부 집계':(data.connectedSources||0)+'곳 연결';
+  $('attentioncontent').className=attentionRows.length?'tablebox':'connection';
+  $('attentioncontent').innerHTML=attentionRows.length?'<table><thead><tr><th>순위</th><th>코인</th><th>언급 글</th><th>평소 대비</th><th>출처</th></tr></thead><tbody>'+attentionRows.slice(0,5).map((c,i)=>'<tr><td class="rank">'+(i+1)+'</td><td><button class="coinline" onclick="attentionDetail(\''+c.symbol+'\')">'+coinIcon(c.symbol)+'<span><b>'+escapeHTML(c.symbol)+'</b><small>'+escapeHTML(c.name)+'</small></span></button></td><td>'+Number(c.mentions).toLocaleString()+'건</td><td>'+(c.growth==null?'<span class="inline-status">'+(attentionScope==='internal'?'—':'이력 축적 중')+'</span>':escapeHTML(c.growth)+'배')+'</td><td>'+Number(c.sourceCount)+'곳</td></tr>').join('')+'</tbody></table>':'<b>'+(data.status==='collecting'?'아직 집계된 코인 언급이 없어요.':attentionScope==='internal'?'내부 관심도 연결을 확인하고 있어요.':'현재 연결된 외부 출처가 없어요.')+'</b><span>'+escapeHTML(data.message||'데이터 연결을 확인하고 있습니다.')+'</span>';
+  $('attentionsources').innerHTML=(data.sources||[]).map(source=>'<div><b>'+escapeHTML(source.name)+'</b><span>'+escapeHTML(attentionStatus[source.status]||'연결 확인 중')+'</span><small>'+escapeHTML(source.note||'')+(source.lastSuccessAt?' · 마지막 성공 '+time(source.lastSuccessAt)+' KST':'')+'</small></div>').join('');
+  $('attentionnote').textContent=(attentionScope==='internal'?'내부 게시글 제목·코인 태그 기준':'연결된 외부 출처 기준')+' · 동일 제목 중복 제외 · '+time(data.fetchedAt)+' KST 조회'+(data.sampled?' · 최근 '+Number(data.sampleSize)+'개 표본':'');
+ } catch {
+  if(requestId!==attentionRequest)return;$('attentionbadge').textContent='연결 지연';$('attentioncontent').className='connection';$('attentioncontent').innerHTML='<b>관심도를 불러오지 못했어요.</b><button onclick="loadAttention()">다시 시도 →</button>';
+ }
+}
+function attentionDetail(symbol){
+ const item=attentionRows.find(c=>c.symbol===symbol);if(!item)return;
+ const links=(item.links||[]).map((link,i)=>{
+  if(link.postId&&/^[a-f0-9-]{36}$/i.test(link.postId))return '<li><button onclick="openPost(\''+link.postId+'\')">알트모아 관련 글 '+(i+1)+' →</button></li>';
+  try{const u=new URL(link.url);if(u.protocol!=='https:')return '';return '<li><a href="'+escapeHTML(u.href)+'" target="_blank" rel="noopener noreferrer">'+escapeHTML(link.sourceName)+' 원문 '+(i+1)+' ↗</a></li>'}catch{return ''}
+ }).join('');
+ modal('<div class="eyebrow">'+(attentionScope==='internal'?'ALTMOA COMMUNITY':'EXTERNAL COMMUNITY')+'</div><h2 class="coin-detail-heading">'+coinIcon(symbol)+escapeHTML(item.name)+' <span class="subtle">'+escapeHTML(symbol)+'</span></h2><p>선택한 기간에 '+Number(item.mentions)+'개의 중복 제외 언급 글이 관측됐어요.</p><p class="subtle">'+(item.growth==null?(attentionScope==='internal'?'내부 관심도는 언급 글 수를 제공합니다.':'평소 대비 급증률은 충분한 이력이 쌓인 뒤 표시합니다.'):'직전 7일의 같은 길이 기간 평균 대비 '+escapeHTML(item.growth)+'배입니다.')+'</p><ul class="attention-links">'+links+'</ul>');
+}
 async function loadMarket() {
   if (marketBusy) return; marketBusy = true;
   try {
     const { data } = await fetchJSON('/api/market'); coins = data.coins; lastFetchedAt = data.fetchedAt; marketFailed = false;
     $('marketbadge').textContent = 'UPBIT'; $('markettime').textContent = '업비트 · ' + time(data.fetchedAt) + ' KST 조회 · 60초마다 갱신';
-    $('globalstatus').textContent = '실제 시세 · 외부 관심도 수집 준비 중';
+    $('globalstatus').textContent = '실제 시세 · 내부 관심도 집계 · 외부 연결 준비 중';
     $('ticker').innerHTML = '<span style="color:var(--accent);font-weight:700">UPBIT · KRW</span>' + ['BTC', 'ETH', 'SOL', 'XRP'].map(symbol => { const c = coins.find(x => x.symbol === symbol); return c ? '<span class="ticker-coin">' + coinIcon(symbol) + '<b>' + symbol + '</b>' + won(c.price) + ' <span class="' + (c.change >= 0 ? 'up' : 'down') + '">' + (c.change >= 0 ? '+' : '') + c.change.toFixed(2) + '%</span></span>' : ''; }).join('') + '<span style="color:#94a0b2;font-size:10px">전일 종가 대비</span>';
     renderCoins(); renderLounges();
   } catch {
@@ -153,7 +179,7 @@ function writePost() {
     event.preventDefault(); const form = new FormData(event.target); const button = $('writesubmit'); button.disabled = true;
     try {
       const { data } = await db('posts', { method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ author_id: session.user.id, category: form.get('category'), coin: form.get('coin') || null, title: form.get('title').trim(), body: form.get('body').trim() }) });
-      category = '전체'; coinFilter = ''; query = ''; $('search').value = ''; page = 0; await loadPosts(); toast('게시글을 등록했어요.'); if (data[0]) openPost(data[0].id);
+      category = '전체'; coinFilter = ''; query = ''; $('search').value = ''; page = 0; await loadPosts(); toast('게시글을 등록했어요.'); loadAttention(); if (data[0]) openPost(data[0].id);
     } catch (error) { if ($('writeerror')) $('writeerror').textContent = errorMessage(error); }
     finally { if (button.isConnected) button.disabled = false; }
   };
@@ -185,6 +211,8 @@ function navigate(section) {
 }
 async function init() {
   renderLounges(); updateAuth();
+  document.querySelectorAll('[data-attention-scope]').forEach(b => b.onclick = () => { attentionScope=b.dataset.attentionScope;document.querySelectorAll('[data-attention-scope]').forEach(x=>x.classList.toggle('on',x===b));loadAttention(); });
+  $('attentionregion').onchange=loadAttention; $('attentionperiod').onchange=loadAttention;
   document.querySelectorAll('[data-nav],[data-side]').forEach(b => b.onclick = () => navigate(b.dataset.nav || b.dataset.side));
   document.querySelectorAll('[data-sort]').forEach(b => b.onclick = () => { sort = b.dataset.sort; document.querySelectorAll('[data-sort]').forEach(x => x.classList.toggle('on', x === b)); renderCoins(); });
   document.querySelectorAll('[data-tab],[data-board]').forEach(b => b.onclick = () => { category = b.dataset.tab || b.dataset.board; coinFilter = ''; page = 0; loadPosts(); if (b.dataset.board) $('boardpanel').scrollIntoView({ behavior: 'smooth' }); });
@@ -194,7 +222,8 @@ async function init() {
   $('dialog').addEventListener('close', () => { if (!$('dialog').open) activePostId = null; });
   $('dialog').addEventListener('click', event => { if (event.target === $('dialog')) { const r = $('dialog').getBoundingClientRect(); if (event.clientX < r.left || event.clientX > r.right || event.clientY < r.top || event.clientY > r.bottom) $('dialog').close(); } });
   loadMarket();
-  setInterval(() => { if (!document.hidden) loadMarket(); }, 60000);
+  loadAttention();
+  setInterval(() => { if (!document.hidden) { loadMarket(); loadAttention(); } }, 60000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden && (!lastFetchedAt || Date.now() - new Date(lastFetchedAt).getTime() > 60000)) loadMarket(); });
   try {
     config = (await fetchJSON('/api/config')).data;
