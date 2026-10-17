@@ -97,7 +97,7 @@ test('sorting toggles volume and signed price change in both directions',()=>{
  const f=fixture(async()=>Response.json({}));f.run("coins=[{symbol:'A',name:'A',price:1,change:-3,volume24h:100},{symbol:'B',name:'B',price:1,change:5,volume24h:2}];setMarketSort('volume')");assert.equal(f.run('sortDirection'),'asc');assert.ok(f.node('coins').innerHTML.indexOf('>B<')<f.node('coins').innerHTML.indexOf('>A<'));f.run("setMarketSort('change');setMarketSort('change')");assert.equal(f.run('sortDirection'),'asc');assert.ok(f.node('coins').innerHTML.indexOf('>A<')<f.node('coins').innerHTML.indexOf('>B<'));
 });
 test('my activity queries only the signed-in author and computes grade from exact counts',async()=>{
- const urls=[];const f=fixture(async url=>{urls.push(new URL(url));const comment=String(url).includes('/comments?');return Response.json(comment?[{id:'c',body:'내 댓글',post_id:'p',created_at:'2026-10-17',posts:{title:'원글',category:'질문'}}]:[{id:'p',title:'내 글',category:'분석',created_at:'2026-10-17'}],{headers:{'content-range':comment?'0-0/3':'0-0/4'}})});configure(f);await f.run('loadMyActivity()');assert.ok(urls.every(url=>url.searchParams.get('author_id')==='eq.user-123'));assert.match(f.node('activitystats').innerHTML,/23점/);assert.match(f.node('activitystats').innerHTML,/참여자/);assert.match(f.node('activityitems').innerHTML,/내 글/);f.run("activityTab='comments'");await f.run('loadMyActivity()');assert.match(f.node('activityitems').innerHTML,/내 댓글/);assert.match(f.node('activityitems').innerHTML,/원글/);assert.equal(f.run('memberLevel(0,0).name'),'새싹');assert.equal(f.run('memberLevel(200,0).name'),'레전드');
+ const urls=[];const f=fixture(async url=>{urls.push(new URL(url));const comment=String(url).includes('/comments?');return Response.json(comment?[{id:'c',body:'내 댓글',post_id:'p',created_at:'2026-10-17',posts:{title:'원글',category:'질문'}}]:[{id:'p',title:'내 글',category:'분석',created_at:'2026-10-17'}],{headers:{'content-range':comment?'0-0/3':'0-0/4'}})});configure(f);await f.run('loadMyActivity()');assert.ok(urls.filter(url=>!url.pathname.endsWith('/profiles')).every(url=>url.searchParams.get('author_id')==='eq.user-123'));assert.match(f.node('activitystats').innerHTML,/23점/);assert.match(f.node('activitystats').innerHTML,/참여자/);assert.match(f.node('activityitems').innerHTML,/내 글/);f.run("activityTab='comments'");await f.run('loadMyActivity()');assert.match(f.node('activityitems').innerHTML,/내 댓글/);assert.match(f.node('activityitems').innerHTML,/원글/);assert.equal(f.run('memberLevel(0,0).name'),'새싹');assert.equal(f.run('memberLevel(200,0).name'),'레전드');
 });
 
 test('post tags are mandatory, normalized and deduplicated before any write',async()=>{
@@ -189,4 +189,30 @@ test('only moderators can edit posts and saving preserves the target with bounde
  f.run('openPost=async()=>{};loadPosts=()=>{};loadAttention=()=>{}');
  await f.node('editpostform').onsubmit({preventDefault(){},target:{title:'수정 제목',body:'수정한 본문입니다'}});
  assert.equal(sent.p_id,id);assert.equal(sent.p_title,'수정 제목');assert.equal(sent.p_body,'수정한 본문입니다');assert.equal(Object.keys(sent).length,3);
+});
+
+test('member profiles render private responses without requesting author history directly',async()=>{
+ const id='00000000-0000-0000-0000-000000000001';const calls=[];
+ const f=fixture(async(url,options)=>{calls.push(String(url));return Response.json({id,nickname:'<svg>회원',is_ai:false,can_view:false,activity_public:false})});configure(f);await f.run(`openMemberProfile('${id}')`);await new Promise(r=>setImmediate(r));
+ assert.equal(f.run('activeView'),'member');assert.match(f.node('membercontent').innerHTML,/비공개/);assert.doesNotMatch(f.node('membercontent').innerHTML,/<svg>/);assert.equal(calls.length,1);assert.match(calls[0],/rpc\/member_profile/);assert.match(f.run('history.lastPath'),/view=member/);
+});
+
+test('nickname links are escaped and invalid profile identifiers never fetch',async()=>{
+ let calls=0;const f=fixture(async()=>{calls++;return Response.json(null)});configure(f);
+ f.run("openMemberProfile('invalid')");assert.equal(calls,0);
+ const html=f.run("memberLink('00000000-0000-0000-0000-000000000001','<img src=x>')");assert.match(html,/view=member/);assert.doesNotMatch(html,/<img/);
+});
+
+test('operator badge comes from server role metadata and includes a shield label',()=>{
+ const f=fixture(async()=>Response.json([]));configure(f);
+ assert.match(f.run("badgeHTML({is_operator:true,post_count:0,comment_count:0})"),/operator-badge/);
+ assert.match(f.run("badgeHTML({is_operator:true})"),/운영자/);
+ assert.doesNotMatch(f.run("badgeHTML({is_operator:false,is_ai:false,post_count:0,comment_count:0})"),/operator-badge/);
+});
+
+test('signing out discards a late owner-only profile response',async()=>{
+ const id='00000000-0000-0000-0000-000000000001';let finish,calls=0;
+ const f=fixture(async()=>{calls++;if(calls===1)return new Promise(resolve=>finish=resolve);return Response.json({id,nickname:'회원',can_view:false,activity_public:false})});configure(f);f.run(`session.user.id='${id}';openMemberProfile('${id}')`);await new Promise(r=>setImmediate(r));
+ f.run('setSession(null)');await new Promise(r=>setImmediate(r));finish(Response.json({id,nickname:'회원',can_view:true,activity_public:false,post_count:1,comment_count:0,items:[{id,title:'소유자 전용 목록',body:'내용'}]}));await new Promise(r=>setImmediate(r));
+ assert.match(f.node('membercontent').innerHTML,/비공개/);assert.doesNotMatch(f.node('membercontent').innerHTML,/소유자 전용 목록/);
 });
