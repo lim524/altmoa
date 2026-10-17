@@ -6,3 +6,9 @@
 
 /* Neutral brand with blue reserved for actions and selected navigation. */
 .brand{color:#202632}.mark{background:#202632}.dark .brand{color:#e5eaf2}.dark .mark{background:#e5eaf2;color:#202632}.adslot{background:#f4f5f7;border-color:#dce1e8}.utility{background:#f1f3f6}.dark .utility{background:#1b2430;color:#a8b5c7}
+
+/* Uploaded Altmoa wordmark and source-specific Upbit coin logos. */
+.brand{gap:0;letter-spacing:normal;flex-shrink:0}.brand-logo{display:block;width:225px;height:auto}.footer-logo{width:105px;height:auto;vertical-align:middle;margin-right:10px}
+.coin-avatar{position:relative;overflow:hidden;background:#f0f3f7!important;color:#475569;vertical-align:middle}.coin-avatar img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;opacity:0}.coin-avatar.loaded img{opacity:1}.coin-avatar.loaded .coin-fallback{visibility:hidden}
+.coin-detail-heading{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.lounge-label,.ticker-coin{display:inline-flex;align-items:center;gap:8px}.menu .coin-avatar,.topics .coin-avatar,.ticker .coin-avatar{width:18px;height:18px;font-size:10px}.topics button{display:inline-flex;gap:5px;align-items:center}.dark .brand-logo,.dark .footer-logo{background:#fff;border-radius:6px}.dark .coin-avatar{background:#f0f3f7!important}
+@media(max-width:760px){.brand-logo{width:155px}.head{gap:12px}.footer-logo{width:90px}}
