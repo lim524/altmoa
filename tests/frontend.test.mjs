@@ -103,3 +103,7 @@ test('my activity queries only the signed-in author and computes grade from exac
 test('post tags are mandatory, normalized and deduplicated before any write',async()=>{
  let calls=0;const f=fixture(async()=>{calls++;return Response.json([])});configure(f);f.run('writePost()');await f.node('writeform').onsubmit({preventDefault(){},target:{category:'자유',tags:'  ',title:'태그 검사',body:'필수 태그 검사'}});assert.equal(calls,0);assert.match(f.node('writeerror').textContent,/태그/);assert.deepEqual(Array.from(f.run("parseTags('#usdt btc,USDT 한글')")),['USDT','BTC','한글']);assert.throws(()=>f.run("parseTags('<script>')"));
 });
+
+test('missing post feature columns explain the required migration and retain the composer',async()=>{
+ const f=fixture(async()=>Response.json({code:'PGRST204',message:"Could not find the 'images' column of 'posts' in the schema cache"},{status:400}));configure(f);f.run('writePost()');await f.node('writeform').onsubmit({preventDefault(){},target:{category:'자유',tags:'btc',title:'입력 유지 검사',body:'본문 유지 검사'}});assert.match(f.node('writeerror').textContent,/upgrade-community.sql/);assert.equal(f.node('dialog').open,true);assert.equal(f.node('writesubmit').disabled,false);
+});

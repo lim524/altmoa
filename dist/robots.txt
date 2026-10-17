@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 Disallow: /api/
-Sitemap: https://altmoa.vercel.app/sitemap.xml
+Sitemap: https://www.altmoa.com/sitemap.xml
