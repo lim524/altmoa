@@ -12,7 +12,7 @@ async function loadMemberBadges(ids){
 }
 function openMyActivity(tab='posts'){$('dialog').close();activityTab=tab==='comments'?'comments':'posts';activityPage=0;navigate('activity');}
 function showAccount(){
- modal('<div class="eyebrow">MY ALTMOA</div><h2>내 계정</h2><p>'+escapeHTML(session.user.email)+'</p><div class="account-links"><button class="solid" onclick="openMyActivity(\'posts\')">내 글 보기</button><button class="solid" onclick="openMyActivity(\'comments\')">내 댓글 보기</button></div><p class="subtle">작성한 글·댓글과 활동 등급을 확인할 수 있어요.</p><button onclick="signOut()">로그아웃</button>'+(moderator?' <button onclick="showReports()">신고 관리</button> <button onclick="showAIStudio()">AI 캐릭터 관리</button>':''));
+ modal('<div class="eyebrow">MY ALTMOA</div><h2>내 계정</h2><p>'+escapeHTML(session.user.email)+'</p><div class="account-links"><button class="solid" onclick="openMyActivity(\'posts\')">내 글 보기</button><button class="solid" onclick="openMyActivity(\'comments\')">내 댓글 보기</button></div><p class="subtle">작성한 글·댓글과 활동 등급을 확인할 수 있어요.</p><button onclick="signOut()">로그아웃</button>'+(moderator?' <button onclick="showReports()">신고 관리</button> <button onclick="showSupport()">문의 관리</button> <button onclick="showAIStudio()">AI 캐릭터 관리</button>':''));
 }
 async function loadMyActivity(){
  const token=++activityRequest;
@@ -39,4 +39,9 @@ async function showAIStudio(){
  try{const form=new FormData(event.target),token=await freshToken();const {data}=await fetchJSON('/api/ai',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},signal:AbortSignal.timeout(30000),body:JSON.stringify({character:form.get('character'),exchange:form.get('exchange'),symbol:form.get('symbol').trim().toUpperCase(),topic:form.get('topic')})});if(!$('aidraft'))return;$('aierror').textContent='초안 생성 완료 · 게시하지 않았습니다.';$('aidraft').innerHTML='<h3>운영자 검토용 초안</h3><div class="postbody">'+escapeHTML(data.text)+'</div><p class="subtle">시세 조회: '+escapeHTML(data.snapshot.exchange)+' · '+time(data.snapshot.fetchedAt)+' KST</p>'+data.sources.map(source=>'<p><a href="'+escapeHTML(source.url)+'" target="_blank" rel="noopener noreferrer">'+escapeHTML(source.title)+'</a></p>').join('');}
  catch(error){if($('aierror'))$('aierror').textContent=errorMessage(error);}finally{if(button.isConnected)button.disabled=false;}};
  }catch(error){info('AI 설정을 불러오지 못했어요',errorMessage(error));}
+}
+
+async function showSupport(){
+ if(!moderator)return;modal('<h2>문의 관리</h2><p class="subtle">불러오는 중입니다.</p>');
+ try{const {data}=await db('support_tickets?select=*&order=created_at.desc&limit=50');modal('<h2>문의 관리</h2><p class="subtle">최근 50건 · 처리 완료 후 개인정보가 남지 않도록 삭제하세요. 답변은 이메일로 직접 회신해 주세요.</p>'+data.map(ticket=>'<div class="comment"><small>'+escapeHTML(ticket.email)+' · '+time(ticket.created_at)+'</small><h3>'+escapeHTML(ticket.subject)+'</h3><p class="support-body">'+escapeHTML(ticket.body)+'</p><button class="danger" data-support-delete="'+ticket.id+'">처리 완료 · 삭제</button></div>').join(''));document.querySelectorAll('[data-support-delete]').forEach(button=>button.onclick=async()=>{button.disabled=true;try{await db('support_tickets?id=eq.'+button.dataset.supportDelete,{method:'DELETE'});await showSupport();}catch{toast('삭제하지 못했어요.');button.disabled=false;}});}catch{info('문의를 불러오지 못했어요','문의 저장 구조와 운영자 권한을 확인해 주세요.');}
 }

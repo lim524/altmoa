@@ -1,3 +1,4 @@
+import {publicCommunity} from '../lib/public-community.mjs';
 import { EXCHANGES,fetchExchange,compareAsset,fetchConversion } from '../lib/exchanges.mjs';
 import {aiConfiguration,createAIDraft} from '../lib/ai-drafts.mjs';
 import { getAttention } from '../lib/attention-api.mjs';
@@ -16,6 +17,7 @@ export async function GET(request) {
     // Only a validated public anon/publishable key is sent to clients.
     return json({ communityReady: ready, supabaseUrl: ready ? url : '', supabaseKey: ready ? key : '' });
   }
+  if(route==='public-community'||route==='public-post')return publicCommunity(u,route==='public-post');
   if(route==='ai')return json(aiConfiguration());
   if (route === 'attention') return json(await getAttention(u));
   if(route==='conversion'){try{return json(await fetchConversion(),200,'public, max-age=0, s-maxage=30, stale-while-revalidate=60');}catch{return json({error:'USDT/KRW 환산 시세 연결 지연'},502);}}

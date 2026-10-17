@@ -26,7 +26,7 @@ function config(){process.env.SUPABASE_URL='https://test-project.supabase.co';pr
 function clear(){delete process.env.SUPABASE_URL;delete process.env.SUPABASE_ANON_KEY}
 test('external candidates never trigger a crawl and remain disconnected without approved feeds',async()=>{
  const original=globalThis.fetch;let calls=0;globalThis.fetch=async()=>{calls++;throw Error('unexpected fetch')};
- try{clear();const r=await getAttention(new URL('https://example.com/api/attention'));assert.equal(calls,0);assert.equal(r.connectedSources,0);assert.equal(r.sources.length,5);assert.equal(r.status,'not_connected')}
+ try{clear();const r=await getAttention(new URL('https://example.com/api/attention'));assert.equal(calls,0);assert.equal(r.connectedSources,0);assert.equal(r.sources.length,1);assert.equal(r.status,'not_connected')}
  finally{globalThis.fetch=original;clear()}
 });
 test('internal attention uses visible posts only and never shares body/author data',async()=>{
@@ -38,7 +38,7 @@ test('missing migration is reported without fabricated external rankings',async(
  const original=globalThis.fetch;config();globalThis.fetch=async()=>Response.json({code:'PGRST205'},{status:404});
  try{const r=await getAttention(new URL('https://example.com/api/attention'));assert.equal(r.status,'setup_required');assert.deepEqual(r.items,[]);assert.equal(r.connectedSources,0)}finally{globalThis.fetch=original;clear()}
 });
-test('a stale external source is excluded from ranking requests',async()=>{
- const original=globalThis.fetch;config();globalThis.fetch=async()=>Response.json([{id:'dc_chart',status:'collecting',last_success_at:'2020-01-01T00:00:00Z'}]);
- try{const r=await getAttention(new URL('https://example.com/api/attention'));assert.equal(r.connectedSources,0);assert.equal(r.sources.find(s=>s.id==='dc_chart').status,'stale');assert.deepEqual(r.items,[])}finally{globalThis.fetch=original;clear()}
+test('legacy scope and region parameters always resolve to internal unified posts',async()=>{
+ const original=globalThis.fetch;config();const calls=[];globalThis.fetch=async url=>{calls.push(String(url));return Response.json([{id:'a',title:'태그 테스트',tags:['BTC','USDT'],created_at:new Date().toISOString()}]);};
+ try{const r=await getAttention(new URL('https://example.com/api/attention?scope=external&region=global'));assert.equal(r.scope,'internal');assert.equal(r.region,undefined);assert.deepEqual(r.items.map(i=>i.symbol),['BTC','USDT']);assert.equal(calls.length,1);assert.match(calls[0],/rest\/v1\/posts/);assert.doesNotMatch(calls[0],/attention_sources|rpc/);}finally{globalThis.fetch=original;clear();}
 });

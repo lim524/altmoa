@@ -9,3 +9,6 @@
 Final prompt:
 
 > A finished premium Korean crypto community website logo, horizontal 3:1 composition. SOLID FLAT background hex #202B35, absolutely no transparency. Left: a clean minimal triangular letter A built from three interconnected people, using cobalt blue, cyan and violet geometric rounded shapes. Right: large, perfectly legible exact Korean wordmark '알트모아' in bright pure white heavy rounded geometric sans-serif. Smooth vector-style flat graphic with perfectly solid filled shapes, crisp edges, no gradients on text, no outline, no texture, no distress, no noise, no glow, no mockup. Entire wordmark in one line. Compact balanced horizontal lockup with 5% padding. No other words or symbols. Render clean professional typography suitable for a small dark website header.
+
+## Vercel telemetry clients
+Official npm packages `@vercel/analytics` 2.0.1 and `@vercel/speed-insights` 2.0.0, retrieved 2026-10-17 from registry.npmjs.org. Browser ESM clients in `dist/vendor`, corresponding MIT licenses alongside. Source-map files omitted; executable SDK code otherwise unmodified. No analytics account, paid plan or dashboard toggle is created by including these clients.

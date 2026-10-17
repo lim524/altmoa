@@ -67,8 +67,8 @@ function coinIcon(symbol, fallbackSymbol = symbol, logoUrl = '') {
 function toast(message) { $('toast').textContent = message; $('toast').style.display = 'block'; clearTimeout(window.toastTimer); window.toastTimer = setTimeout(() => $('toast').style.display = 'none', 2800); }
 function modal(html, postId = null) { activePostId = postId; $('modalcontent').innerHTML = html; if (!$('dialog').open) $('dialog').showModal(); }
 function info(title, body) { modal('<div class="eyebrow">ALTMOA</div><h2>' + escapeHTML(title) + '</h2><p>' + escapeHTML(body) + '</p>'); }
-function method() { info('관심도 집계 안내', '외부 커뮤니티와 알트모아 내부 통계를 분리합니다. 현재 디시·코인판은 이용 동의 확보 전, X·Reddit은 API 연결 전이라 외부 수집을 실행하지 않습니다. 내부 통계는 최근 게시글의 제목과 코인 태그로 판별하며 같은 코인의 동일 제목은 한 번 집계합니다. 댓글·작성자 수는 집계하지 않고 초기 사전에 등록된 코인만 인식합니다. 외부 급증 배수는 8일 이상 이력, 최근 8일 수집 성공률 90% 이상, 30분 초과 공백 없음, 현재 5건 이상·평소 평균 1건 이상의 조건에서만 제공합니다. 관심도는 매수 신호가 아닙니다.'); }
-function rules() { info('함께 지켜요', '홍보 도배, 사칭, 수익 보장, 개인정보 공개, 불법·음란 콘텐츠는 게시할 수 없습니다. 문제가 있는 글·댓글은 신고해 주세요. 작성자는 자신의 글·댓글을 삭제할 수 있고 운영자는 신고 내용을 확인해 숨김 처리할 수 있습니다. 사진 첨부와 외부 원문 수집은 아직 제공하지 않습니다. 관심 코인은 이 브라우저에 저장됩니다.'); }
+function method() { info('관심도 집계 안내', '알트모아의 공개 게시글 제목과 코인 태그만 통합 집계합니다. 지역 구분과 외부 데이터 수집은 없습니다. 최근 1시간 또는 24시간 중 선택하며, 같은 코인의 동일 제목은 한 번만 셉니다. 댓글·추천 수는 포함하지 않고 사전에 등록된 코인만 인식합니다. 최대 최근 2,000개 글을 분석하고 초과 시 표본이라고 표시합니다. 관심도는 회원의 대화량이며 매수 신호가 아닙니다.'); }
+function rules() { info('함께 지켜요', '홍보 도배, 사칭, 수익 보장, 개인정보 공개, 불법·음란 콘텐츠는 게시할 수 없습니다. 문제가 있는 글·댓글은 신고해 주세요. 작성자는 자신의 글·댓글을 삭제할 수 있고 운영자는 신고 내용을 확인해 숨김 처리할 수 있습니다. 사진은 본인에게 게시 권한이 있는 자료만 첨부해 주세요. 외부 원문은 수집하지 않습니다. 관심 코인은 이 브라우저에 저장됩니다.'); }
 function errorMessage(error) { const m = error.message || ''; if (/60초|10초/.test(m)) return m; if (/invalid login credentials/i.test(m)) return '이메일 또는 비밀번호를 확인해 주세요.'; if (/email not confirmed/i.test(m)) return '이메일 인증을 완료한 뒤 로그인해 주세요.'; if (/already registered/i.test(m)) return '이미 가입된 이메일입니다.'; if (/rate limit|too many/i.test(m)) return '요청이 많아요. 잠시 후 다시 시도해 주세요.'; if (/duplicate key|23505/.test(m)) return '이미 신고한 항목입니다.'; if (/JWT|token|로그인/.test(m)) return '다시 로그인해 주세요.'; if (/schema cache|does not exist/i.test(m)) return '게시판 연결을 준비하고 있습니다.'; if (/fetch|network|timeout|abort/i.test(m)) return '연결하지 못했어요. 잠시 후 다시 시도해 주세요.'; if (error.status === 401 || error.status === 403) return '접근 권한을 확인해 주세요.'; return '요청을 처리하지 못했어요. 잠시 후 다시 시도해 주세요.'; }
 async function fetchJSON(url, options = {}) {
   const response = await fetch(url, { ...options, signal: options.signal || AbortSignal.timeout(12000) });
@@ -101,7 +101,7 @@ function authModal(mode = 'login') {
   if (!config?.communityReady) return info('회원 기능을 준비하고 있어요', '아직 회원 서버가 연결되지 않았습니다. 시세 조회와 관심 코인 저장은 바로 이용할 수 있어요.');
   if(session?.user)return showAccount();
   const signup = mode === 'signup';
-  modal('<div class="eyebrow">WELCOME TO ALTMOA</div><h2>' + (signup ? '알트모아에 가입하기' : '다시 만나 반가워요') + '</h2><form id="authform">' + (signup ? '<label>닉네임<input name="nickname" minlength="2" maxlength="20" required autocomplete="nickname"></label>' : '') + '<label>이메일<input name="email" type="email" required autocomplete="email"></label><label>비밀번호<input name="password" type="password" minlength="8" maxlength="128" required autocomplete="' + (signup ? 'new-password' : 'current-password') + '"></label><p class="subtle">' + (signup ? '이메일 인증 후 이용할 수 있습니다. 8자 이상의 비밀번호를 사용하세요.' : '이메일로 가입한 계정으로 로그인하세요.') + '</p><button class="solid wide" id="authsubmit">' + (signup ? '가입하기' : '로그인') + '</button><p id="autherror" role="alert" class="subtle"></p></form><button onclick="authModal(\'' + (signup ? 'login' : 'signup') + '\')">' + (signup ? '이미 계정이 있어요 → 로그인' : '아직 계정이 없어요 → 회원가입') + '</button>' + (!signup ? '<button style="float:right" onclick="resetPassword()">비밀번호 재설정</button>' : ''));
+  modal('<div class="eyebrow">WELCOME TO ALTMOA</div><h2>' + (signup ? '알트모아에 가입하기' : '다시 만나 반가워요') + '</h2><form id="authform">' + (signup ? '<label>닉네임<input name="nickname" minlength="2" maxlength="20" required autocomplete="nickname"></label>' : '') + '<label>이메일<input name="email" type="email" required autocomplete="email"></label><label>비밀번호<input name="password" type="password" minlength="8" maxlength="128" required autocomplete="' + (signup ? 'new-password' : 'current-password') + '"></label><p class="subtle">' + (signup ? '이메일 인증 후 이용할 수 있습니다. 가입 전 아래 약관과 개인정보처리방침을 확인해 주세요.' : '이메일로 가입한 계정으로 로그인하세요.') + '</p><p class="subtle"><a href="/terms" target="_blank" rel="noopener">이용약관</a> · <a href="/privacy" target="_blank" rel="noopener">개인정보처리방침</a></p><button class="solid wide" id="authsubmit">' + (signup ? '가입하기' : '로그인') + '</button><p id="autherror" role="alert" class="subtle"></p></form><button onclick="authModal(\'' + (signup ? 'login' : 'signup') + '\')">' + (signup ? '이미 계정이 있어요 → 로그인' : '아직 계정이 없어요 → 회원가입') + '</button>' + (!signup ? '<button style="float:right" onclick="resetPassword()">비밀번호 재설정</button>' : ''));
   $('authform').onsubmit = async event => {
     event.preventDefault(); const form = new FormData(event.target); const submit = $('authsubmit'); submit.disabled = true; $('autherror').textContent = '';
     try {
@@ -124,20 +124,20 @@ function passwordModal() {
   modal('<h2>새 비밀번호 설정</h2><form id="passwordform"><label>새 비밀번호<input name="password" type="password" minlength="8" maxlength="128" required autocomplete="new-password"></label><button class="solid wide">비밀번호 변경</button><p id="passwordstatus" role="alert"></p></form>');
   $('passwordform').onsubmit = async event => { event.preventDefault(); const button = event.target.querySelector('button'); button.disabled = true; try { const token = await freshToken(); await fetchJSON(config.supabaseUrl + '/auth/v1/user', { method: 'PUT', headers: { apikey: config.supabaseKey, Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify({ password: new FormData(event.target).get('password') }) }); $('dialog').close(); toast('비밀번호를 변경했어요.'); } catch (error) { if ($('passwordstatus')) $('passwordstatus').textContent = errorMessage(error); } finally { if (button.isConnected) button.disabled = false; } };
 }
-let attentionScope = 'internal', attentionRequest = 0, attentionRows = [];
+let attentionRequest = 0, attentionRows = [];
 const attentionStatus = {permission_required:'동의 필요',api_required:'API 연결 필요',collecting:'수집 중',paused:'일시 중지',error:'연결 오류',partial:'일부 수집',stale:'갱신 지연',not_connected:'미연결'};
 async function loadAttention() {
  const requestId=++attentionRequest;
  attentionRows=[]; $('attentioncontent').className='connection'; $('attentioncontent').textContent='관심도를 불러오는 중입니다.';
- const params=new URLSearchParams({scope:attentionScope,hours:$('attentionperiod').value,region:$('attentionregion').value});
+ const params=new URLSearchParams({hours:$('attentionperiod').value});
  try {
   const {data}=await fetchJSON('/api/attention?'+params);if(requestId!==attentionRequest)return;
   attentionRows=data.items||[];
-  $('attentionbadge').textContent=attentionScope==='internal'?'내부 집계':(data.connectedSources||0)+'곳 연결';
+  $('attentionbadge').textContent='내부 통합 집계';
   $('attentioncontent').className=attentionRows.length?'tablebox':'connection';
-  $('attentioncontent').innerHTML=attentionRows.length?'<table><thead><tr><th>순위</th><th>코인</th><th>언급 글</th><th>평소 대비</th><th>출처</th></tr></thead><tbody>'+attentionRows.slice(0,5).map((c,i)=>'<tr><td class="rank">'+(i+1)+'</td><td><button class="coinline" onclick="attentionDetail(\''+c.symbol+'\')">'+coinIcon(c.symbol)+'<span><b>'+escapeHTML(c.symbol)+'</b><small>'+escapeHTML(c.name)+'</small></span></button></td><td>'+Number(c.mentions).toLocaleString()+'건</td><td>'+(c.growth==null?'<span class="inline-status">'+(attentionScope==='internal'?'—':'이력 축적 중')+'</span>':escapeHTML(c.growth)+'배')+'</td><td>'+Number(c.sourceCount)+'곳</td></tr>').join('')+'</tbody></table>':'<b>'+(data.status==='collecting'?'아직 집계된 코인 언급이 없어요.':attentionScope==='internal'?'내부 관심도 연결을 확인하고 있어요.':'현재 연결된 외부 출처가 없어요.')+'</b><span>'+escapeHTML(data.message||'데이터 연결을 확인하고 있습니다.')+'</span>';
-  $('attentionsources').innerHTML=(data.sources||[]).map(source=>'<div><b>'+escapeHTML(source.name)+'</b><span>'+escapeHTML(attentionStatus[source.status]||'연결 확인 중')+'</span><small>'+escapeHTML(source.note||'')+(source.lastSuccessAt?' · 마지막 성공 '+time(source.lastSuccessAt)+' KST':'')+'</small></div>').join('');
-  $('attentionnote').textContent=(attentionScope==='internal'?'내부 게시글 제목·코인 태그 기준':'연결된 외부 출처 기준')+' · 동일 제목 중복 제외 · '+time(data.fetchedAt)+' KST 조회'+(data.sampled?' · 최근 '+Number(data.sampleSize)+'개 표본':'');
+  $('attentioncontent').innerHTML=attentionRows.length?'<table><thead><tr><th>순위</th><th>코인</th><th>언급 글</th></tr></thead><tbody>'+attentionRows.map((c,i)=>'<tr><td class="rank">'+(i+1)+'</td><td><button class="coinline" onclick="attentionDetail(\''+c.symbol+'\')">'+coinIcon(c.symbol)+'<span><b>'+escapeHTML(c.symbol)+'</b><small>'+escapeHTML(c.name)+'</small></span></button></td><td>'+Number(c.mentions).toLocaleString()+'건</td></tr>').join('')+'</tbody></table>':'<b>아직 집계된 코인 언급이 없어요.</b><span>'+escapeHTML(data.message||'공개 게시글의 코인 언급을 집계합니다.')+'</span>';
+  $('attentionnote').textContent='알트모아 공개 글 제목·코인 태그 · 동일 제목 중복 제외 · '+time(data.fetchedAt)+' KST 조회'+(data.sampled?' · 최근 '+Number(data.sampleSize)+'개 표본':'');
+
  } catch {
   if(requestId!==attentionRequest)return;$('attentionbadge').textContent='연결 지연';$('attentioncontent').className='connection';$('attentioncontent').innerHTML='<b>관심도를 불러오지 못했어요.</b><button onclick="loadAttention()">다시 시도 →</button>';
  }
@@ -148,7 +148,7 @@ function attentionDetail(symbol){
   if(link.postId&&/^[a-f0-9-]{36}$/i.test(link.postId))return '<li><button onclick="openPost(\''+link.postId+'\')">알트모아 관련 글 '+(i+1)+' →</button></li>';
   try{const u=new URL(link.url);if(u.protocol!=='https:')return '';return '<li><a href="'+escapeHTML(u.href)+'" target="_blank" rel="noopener noreferrer">'+escapeHTML(link.sourceName)+' 원문 '+(i+1)+' ↗</a></li>'}catch{return ''}
  }).join('');
- modal('<div class="eyebrow">'+(attentionScope==='internal'?'ALTMOA COMMUNITY':'EXTERNAL COMMUNITY')+'</div><h2 class="coin-detail-heading">'+coinIcon(symbol)+escapeHTML(item.name)+' <span class="subtle">'+escapeHTML(symbol)+'</span></h2><p>선택한 기간에 '+Number(item.mentions)+'개의 중복 제외 언급 글이 관측됐어요.</p><p class="subtle">'+(item.growth==null?(attentionScope==='internal'?'내부 관심도는 언급 글 수를 제공합니다.':'평소 대비 급증률은 충분한 이력이 쌓인 뒤 표시합니다.'):'직전 7일의 같은 길이 기간 평균 대비 '+escapeHTML(item.growth)+'배입니다.')+'</p><ul class="attention-links">'+links+'</ul>');
+ modal('<div class="eyebrow">'+'ALTMOA COMMUNITY'+'</div><h2 class="coin-detail-heading">'+coinIcon(symbol)+escapeHTML(item.name)+' <span class="subtle">'+escapeHTML(symbol)+'</span></h2><p>선택한 기간에 '+Number(item.mentions)+'개의 중복 제외 언급 글이 관측됐어요.</p><p class="subtle">'+'내부 게시글의 언급 수이며, 댓글과 추천 수는 포함하지 않습니다.'+'</p><ul class="attention-links">'+links+'</ul>');
 }
 async function loadMarket(exchange=selectedExchange) {
   if(!exchangeOptions.some(e=>e[0]===exchange))return;
@@ -212,7 +212,7 @@ async function loadPosts() {
   const params=new URLSearchParams({select:baseSelect+(recommendationsReady===false?'':',recommendation_count'),status:'eq.published',order:postSort==='popular'?'recommendation_count.desc,created_at.desc,id.desc':'created_at.desc,id.desc',limit:String(PAGE_SIZE),offset:String(page*PAGE_SIZE)});
   if(category!=='전체')params.set('category','eq.'+category);
   if(postSort==='popular')params.set('recommendation_count','gt.0');
-  if(coinFilter)params.set('coin','eq.'+coinFilter);
+  if(coinFilter)params.set('tags','cs.{'+coinFilter+'}');
   if(query)params.set('title','ilike.*'+query.replace(/[\\%_*]/g,'\\$&')+'*');
   try{
     let result;
@@ -234,7 +234,7 @@ async function openPost(id) {
     const { data } = await db('posts?' + new URLSearchParams({ select: '*,profiles(nickname)', id: 'eq.' + id, status: 'eq.published' }));
     if (activePostId !== id || !$('dialog').open) return;
     const p = data[0]; if (!p) return info('이야기를 찾을 수 없어요', '삭제되었거나 숨김 처리된 게시글입니다.');
-    modal('<div class="eyebrow">' + escapeHTML(p.category) + (p.coin ? ' · ' + escapeHTML(p.coin) : '') + '</div><h2>' + escapeHTML(p.title) + '</h2><p class="subtle">' + escapeHTML(p.profiles?.nickname || '알트모아 회원') + memberBadge(p.author_id) + ' · ' + time(p.created_at) + '</p><div class="postbody">' + escapeHTML(p.body) + '</div><div id="postrecommendation" class="post-recommendation"><p class="subtle">추천을 불러오는 중입니다.</p></div><div class="row-actions"><button onclick="reportItem(\'posts\',\'' + id + '\')">신고</button>' + (session?.user?.id === p.author_id ? '<button class="danger" onclick="deleteItem(\'posts\',\'' + id + '\')">내 글 삭제</button>' : '') + (moderator ? '<button class="danger" onclick="hideItem(\'posts\',\'' + id + '\')">운영자 숨김</button>' : '') + '</div><h3 style="font-size:14px;margin-top:26px">댓글</h3><div id="comments"><p class="subtle">불러오는 중...</p></div><form id="commentform"><label class="subtle" for="commentbody">함께 나눌 이야기</label><textarea id="commentbody" name="body" maxlength="2000" required style="height:80px" placeholder="' + (session?.user ? '댓글을 입력하세요' : '로그인 후 댓글을 남길 수 있어요') + '"></textarea><button class="solid" id="commentsubmit">댓글 등록</button><p id="commenterror" class="subtle" role="alert"></p></form>', id);
+    modal('<div class="eyebrow">' + escapeHTML(p.category) + (p.coin ? ' · ' + escapeHTML(p.coin) : '') + '</div><h2>' + escapeHTML(p.title) + '</h2><p class="subtle">' + escapeHTML(p.profiles?.nickname || '알트모아 회원') + memberBadge(p.author_id) + ' · ' + time(p.created_at) + '</p><div class="postbody">' + escapeHTML(p.body) + '</div><div class="post-tags">'+renderTags(p.tags)+'</div><div id="postphotosview" class="post-photos"></div><section id="postpoll" class="post-poll"></section><div id="postrecommendation" class="post-recommendation"><p class="subtle">추천을 불러오는 중입니다.</p></div><div class="row-actions"><button onclick="reportItem(\'posts\',\'' + id + '\')">신고</button>' + (session?.user?.id === p.author_id ? '<button class="danger" onclick="deleteItem(\'posts\',\'' + id + '\')">내 글 삭제</button>' : '') + (moderator ? '<button class="danger" onclick="hideItem(\'posts\',\'' + id + '\')">운영자 숨김</button>' : '') + '</div><h3 style="font-size:14px;margin-top:26px">댓글</h3><div id="comments"><p class="subtle">불러오는 중...</p></div><form id="commentform"><label class="subtle" for="commentbody">함께 나눌 이야기</label><textarea id="commentbody" name="body" maxlength="2000" required style="height:80px" placeholder="' + (session?.user ? '댓글을 입력하세요' : '로그인 후 댓글을 남길 수 있어요') + '"></textarea><button class="solid" id="commentsubmit">댓글 등록</button><p id="commenterror" class="subtle" role="alert"></p></form>', id);
     $('commentform').onsubmit = async event => {
       event.preventDefault(); if (!session?.user) return authModal();
       const button = $('commentsubmit'); button.disabled = true;
@@ -243,7 +243,7 @@ async function openPost(id) {
       finally { if (button.isConnected) button.disabled = false; }
     };
     loadMemberBadges([p.author_id]);
-    await Promise.all([loadComments(id),loadPostRecommendation(id,p.author_id)]);
+    await Promise.all([loadComments(id),loadPostRecommendation(id,p.author_id),loadPostPhotos(p.images,id),loadPoll(p)]);
   } catch (error) { if (activePostId === id) info('이야기를 불러오지 못했어요', errorMessage(error)); }
 }
 async function loadComments(id) {
@@ -257,16 +257,24 @@ async function loadComments(id) {
 }
 function writePost() {
   if (!config?.communityReady || !session?.user) return authModal();
-  modal('<div class="eyebrow">NEW CONVERSATION</div><h2>어떤 이야기를 나눠볼까요?</h2><form id="writeform"><label>게시판 <select name="category">' + BOARDS.map(board=>'<option'+(category===board.key?' selected':'')+'>'+board.key+'</option>').join('') + '</select></label><label>관련 코인<select name="coin"><option value="">관련 코인 없음</option>' + coins.filter(c => c.symbol !== 'BTC').map(c => '<option value="' + c.symbol + '"' + (coinFilter === c.symbol ? ' selected' : '') + '>' + escapeHTML(c.name) + ' (' + c.symbol + ')</option>').join('') + '</select></label><label>제목<input name="title" minlength="2" maxlength="100" required placeholder="제목을 입력하세요"></label><label>내용<textarea name="body" minlength="2" maxlength="10000" required placeholder="서로 존중하며 생각을 나눠주세요"></textarea></label><p class="subtle">홍보 도배·사칭·개인정보 게시 금지 · 사진 첨부는 준비 중입니다.</p><button class="solid wide" id="writesubmit">게시글 등록</button><p class="subtle" id="writeerror" role="alert"></p></form>');
+  composerImages.forEach(image=>URL.revokeObjectURL(image.preview));composerImages=[];
+  modal('<div class="eyebrow">NEW CONVERSATION</div><h2>어떤 이야기를 나눠볼까요?</h2><form id="writeform"><label>게시판<select name="category">'+BOARDS.map(board=>'<option'+(category===board.key?' selected':'')+'>'+board.key+'</option>').join('')+'</select></label><label>태그 (필수)<input name="tags" required maxlength="220" value="'+escapeHTML(coinFilter)+'" placeholder="usdt btc 비트코인"></label><p class="subtle">공백 또는 쉼표로 구분 · 1~10개 · 태그당 최대 20자</p><label>제목<input name="title" minlength="2" maxlength="100" required placeholder="제목을 입력하세요"></label><label>내용<textarea name="body" minlength="2" maxlength="10000" required placeholder="서로 존중하며 생각을 나눠주세요"></textarea></label><label>사진 첨부 (최대 3장)<input id="postphotos" type="file" multiple accept="image/jpeg,image/png,image/webp"></label><p class="subtle">사진은 최대 1600px JPEG로 변환하며 위치 등 원본 메타데이터를 제거합니다. 개인정보·타인의 저작물이 담기지 않았는지 확인하세요.</p><div id="photopreviews" class="photo-previews"></div><details class="poll-composer"><summary>투표 추가 (선택)</summary><label>투표 질문<input name="poll_question" maxlength="100" placeholder="예: 가장 자주 보는 거래소는?"></label><label>선택지<textarea name="poll_options" maxlength="490" placeholder="한 줄에 하나씩, 2~6개"></textarea></label><p class="subtle">1인 1표 · 등록 후 선택지와 투표 변경 불가</p></details><p class="subtle">홍보 도배·사칭·개인정보 게시 금지 · <a href="/guidelines">운영 원칙</a></p><button class="solid wide" id="writesubmit">게시글 등록</button><p class="subtle" id="writeerror" role="alert"></p></form>');
+  $('postphotos').onchange=event=>selectPhotos([...event.target.files]);
   $('writeform').onsubmit = async event => {
-    event.preventDefault(); const form = new FormData(event.target); const button = $('writesubmit'); button.disabled = true;
+    event.preventDefault(); const form = new FormData(event.target); const button = $('writesubmit'); button.disabled = true;let uploaded=[],saved=false;
     try {
-      const { data } = await db('posts', { method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ author_id: session.user.id, category: form.get('category'), coin: form.get('coin') || null, title: form.get('title').trim(), body: form.get('body').trim() }) });
+      if($('postphotos').disabled)throw Error('사진 처리가 끝난 후 등록해 주세요.');
+      const tags=parseTags(form.get('tags'));const question=String(form.get('poll_question')||'').trim(),options=String(form.get('poll_options')||'').split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+      if((question||options.length)&&(question.length<2||question.length>100||options.length<2||options.length>6||options.some(o=>o.length>80)||new Set(options).size!==options.length))throw Error('투표 질문 2~100자와 서로 다른 선택지 2~6개(각 80자 이하)를 입력하세요.');
+      uploaded=await uploadComposerImages();
+      const { data } = await db('posts', { method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ author_id: session.user.id, category: form.get('category'), tags, images:uploaded,poll_question:question||null,poll_options:options, title: form.get('title').trim(), body: form.get('body').trim() }) });saved=true;
+      composerImages.forEach(image=>URL.revokeObjectURL(image.preview));composerImages=[];
       category = form.get('category'); coinFilter = ''; query = ''; $('search').value = ''; page = 0; navigate('board',{category}); await loadPosts(); toast('게시글을 등록했어요.'); loadAttention(); if (data[0]) openPost(data[0].id);
-    } catch (error) { if ($('writeerror')) $('writeerror').textContent = errorMessage(error); }
+    } catch (error) { if(!saved&&error.status)await deleteUploadedPhotos(uploaded);if ($('writeerror')) $('writeerror').textContent = /태그|투표|사진|선택지/.test(error.message)?error.message:errorMessage(error); }
     finally { if (button.isConnected) button.disabled = false; }
   };
 }
+
 function deleteItem(table, id, postId = '') {
   modal('<h2>' + (table === 'posts' ? '내 글' : '댓글') + '을 삭제할까요?</h2><p>삭제하면 되돌릴 수 없습니다.</p><button class="solid" id="confirmdelete">삭제하기</button> <button onclick="' + (postId ? "openPost('" + postId + "')" : "document.getElementById('dialog').close()") + '">취소</button><p id="deleteerror" role="alert"></p>');
   $('confirmdelete').onclick = async event => { const button = event.target; button.disabled = true; try { await db(table + '?id=eq.' + id, { method: 'DELETE' }); $('dialog').close(); toast('삭제했어요.'); loadPosts(); if(activeView==='home')loadPopular(); if (postId) openPost(postId); } catch (error) { if ($('deleteerror')) $('deleteerror').textContent = errorMessage(error); } finally { if (button.isConnected) button.disabled = false; } };
@@ -288,8 +296,8 @@ async function init() {
   renderPopularShell(); updateAuth(); restoreCommunityRoute();
   if(activeView!=='home')loadAttentionSummary();
   window.addEventListener?.('popstate',restoreCommunityRoute);
-  document.querySelectorAll('[data-attention-scope]').forEach(b => b.onclick = () => { attentionScope=b.dataset.attentionScope;document.querySelectorAll('[data-attention-scope]').forEach(x=>x.classList.toggle('on',x===b));loadAttention(); });
-  $('attentionregion').onchange=loadAttention; $('attentionperiod').onchange=loadAttention;
+
+  $('attentionperiod').onchange=loadAttention;
   document.querySelectorAll('[data-nav],[data-side]').forEach(b => b.onclick = () => navigate(b.dataset.nav || b.dataset.side));
   document.querySelectorAll('[data-sort]').forEach(button=>button.onclick=()=>setMarketSort(button.dataset.sort));
   document.querySelectorAll('[data-tab],[data-board]').forEach(button=>button.onclick=()=>openBoard(button.dataset.tab||button.dataset.board));
@@ -318,5 +326,6 @@ async function init() {
   if(activeView==='board')await loadPosts();
   if(activeView==='home')await loadPopular();
   if(activeView==='activity')await loadMyActivity();
+  const linkedPost=new URLSearchParams(location.search).get('post');if(linkedPost&&/^[a-f0-9-]{36}$/i.test(linkedPost))await openPost(linkedPost);
 }
 init();

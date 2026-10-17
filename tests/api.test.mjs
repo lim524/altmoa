@@ -47,6 +47,6 @@ test('market success has shared CDN cache and source timestamp', async () => {
 });
 
 test('attention reports zero connected sources; unknown routes are 404', async () => {
-  const body = await (await GET(req('attention'))).json(); assert.equal(body.status,'not_connected'); assert.equal(body.sources.length,5); assert.ok(body.sources.every(s=>['permission_required','api_required'].includes(s.status))); assert.deepEqual(body.items,[]);
+  const body = await (await GET(req('attention'))).json(); assert.equal(body.status,'not_connected'); assert.equal(body.sources.length,1); assert.equal(body.scope,'internal');assert.equal(body.region,undefined);assert.equal(body.sources[0].id,'altmoa'); assert.deepEqual(body.items,[]);
   assert.equal((await GET(req('nope'))).status,404);
 });

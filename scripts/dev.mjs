@@ -7,6 +7,7 @@ const root = path.resolve('dist');
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, 'http://localhost:3000');
+    if (url.pathname==='/community'){url.searchParams.set('route','public-community');url.pathname='/api/index';}else if(url.pathname.startsWith('/posts/')){url.searchParams.set('route','public-post');url.searchParams.set('id',url.pathname.slice(7));url.pathname='/api/index';}
     if (url.pathname.startsWith('/api/')) {
       if (!['GET','POST'].includes(req.method)) { res.writeHead(405); return res.end(); }
       let body;
@@ -15,9 +16,10 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(response.status, Object.fromEntries(response.headers));
       return res.end(Buffer.from(await response.arrayBuffer()));
     }
-    const file = path.resolve(root, '.' + decodeURIComponent(url.pathname === '/' ? '/index.html' : url.pathname));
+    let file = path.resolve(root, '.' + decodeURIComponent(url.pathname === '/' ? '/index.html' : url.pathname));
     if (!file.startsWith(root + path.sep)) { res.writeHead(403); return res.end(); }
-    const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.txt': 'text/plain; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png' };
+    try{if((await fs.stat(file)).isDirectory())file=path.join(file,'index.html');}catch{}
+    const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs':'text/javascript; charset=utf-8', '.xml':'application/xml; charset=utf-8', '.css': 'text/css; charset=utf-8', '.txt': 'text/plain; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png' };
     res.setHeader('Content-Type', mime[path.extname(file)] || 'application/octet-stream');
     res.end(await fs.readFile(file));
   } catch { res.writeHead(404); res.end('Not found'); }

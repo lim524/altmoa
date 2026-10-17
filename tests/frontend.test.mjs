@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import fs from 'node:fs';
+const composerCode=fs.readFileSync(new URL('../dist/composer.js',import.meta.url),'utf8');
 const activityCode=fs.readFileSync(new URL('../dist/activity.js',import.meta.url),'utf8');
 const communityCode=fs.readFileSync(new URL('../dist/community.js',import.meta.url),'utf8');
 const code = fs.readFileSync(new URL('../dist/app.js',import.meta.url),'utf8').replace(/init\(\);\s*$/, '');
@@ -10,8 +11,8 @@ function fixture(handler) {
   const storage = { getItem:k=>data.get(k)||null, setItem:(k,v)=>data.set(k,v) };
   const element = id => { if (!nodes.has(id)) nodes.set(id,{id,textContent:'',innerHTML:'',value:'',style:{},isConnected:true,disabled:false,classList:{toggle(){},contains(){return false},add(){}},addEventListener(){},showModal(){this.open=true},close(){this.open=false},scrollIntoView(){},setAttribute(){},insertAdjacentHTML(_,html){this.innerHTML+=html}});return nodes.get(id); };
   const views=[['homepage','home'],['boardpanel','board'],['marketpanel','market'],['rankpanel','rank']].map(([id,view])=>Object.assign(element(id),{dataset:{view},hidden:view!=='home'}));
-  const context = vm.createContext({ document:{getElementById:element,querySelectorAll:selector=>selector==='[data-view]'?views:[],addEventListener(){},body:{classList:{toggle(){},contains(){return false},add(){}}}}, window:{scrollTo(){}}, localStorage:storage,sessionStorage:storage,setTimeout:()=>1,clearTimeout(){},setInterval(){},URLSearchParams,AbortSignal,location:{origin:'https://altmoa.example',pathname:'/',search:'',hash:''},history:{replaceState(){},pushState(state,title,path){this.lastPath=path}},fetch:(url,options)=>String(url)==='/api/conversion'?Promise.resolve(Response.json({rate:1400,source:'업비트 USDT/KRW',fetchedAt:new Date().toISOString()})):handler(url,options),FormData:class{constructor(fields){this.fields=fields}get(k){return this.fields[k]}} });
-  vm.runInContext(activityCode+'\n'+communityCode+'\n'+code,context);
+  const context = vm.createContext({ document:{getElementById:element,querySelectorAll:selector=>selector==='[data-view]'?views:[],addEventListener(){},body:{classList:{toggle(){},contains(){return false},add(){}}}}, window:{scrollTo(){}}, localStorage:storage,sessionStorage:storage,setTimeout:()=>1,clearTimeout(){},setInterval(){},URL,URLSearchParams,AbortSignal,location:{origin:'https://altmoa.example',pathname:'/',search:'',hash:''},history:{replaceState(){},pushState(state,title,path){this.lastPath=path}},fetch:(url,options)=>String(url)==='/api/conversion'?Promise.resolve(Response.json({rate:1400,source:'업비트 USDT/KRW',fetchedAt:new Date().toISOString()})):handler(url,options),FormData:class{constructor(fields){this.fields=fields}get(k){return this.fields[k]}} });
+  vm.runInContext(composerCode+'\n'+activityCode+'\n'+communityCode+'\n'+code,context);
   return { run:source=>vm.runInContext(source,context),node:element,data };
 }
 const market = { id:'upbit',name:'업비트',source:'Upbit',currency:'KRW', fetchedAt:'2026-10-17T08:00:00Z',coins:[{symbol:'SUI',market:'KRW-SUI',exchange:'upbit',quote:'KRW',name:'수이',price:100,change:-2,volume24h:1000000000}] };
@@ -37,13 +38,13 @@ test('untrusted post titles and nicknames are escaped',async()=>{
 
 test('post submission sends signed-in author and does not fake success on DB failure',async()=>{
   const requests=[];const f=fixture(async(url,options)=>{requests.push({url,options});return Response.json({message:'permission denied'},{status:403})});configure(f);f.run('writePost()');const submit=f.node('writeform').onsubmit;
-  await submit({preventDefault(){},target:{category:'분석',coin:'SUI',title:'실제 제목',body:'실제 내용'}});
-  const body=JSON.parse(requests[0].options.body);assert.equal(body.author_id,'user-123');assert.equal(body.title,'실제 제목');assert.match(f.node('writeerror').textContent,/권한/);assert.equal(f.node('dialog').open,true);assert.equal(f.node('writesubmit').disabled,false);
+  await submit({preventDefault(){},target:{category:'분석',tags:'usdt btc',title:'실제 제목',body:'실제 내용'}});
+  const body=JSON.parse(requests[0].options.body);assert.equal(body.author_id,'user-123');assert.equal(body.title,'실제 제목');assert.deepEqual(body.tags,['USDT','BTC']);assert.match(f.node('writeerror').textContent,/권한/);assert.equal(f.node('dialog').open,true);assert.equal(f.node('writesubmit').disabled,false);
 });
 
 test('successful DB post submission reloads feed and opens the saved post',async()=>{
   const id='00000000-0000-0000-0000-000000000001';
-  const f=fixture(async(url,options)=>{if(options.method==='POST')return Response.json([{id}]);if(String(url).includes('comments?'))return Response.json([]);return Response.json([{id,title:'저장된 제목',body:'저장된 본문',category:'자유',author_id:'user-123',created_at:'2026-10-17T08:00:00Z',profiles:{nickname:'작성자'},comments:[{count:0}]}],{headers:{'content-range':'0-0/1'}})});configure(f);f.run('writePost()');await f.node('writeform').onsubmit({preventDefault(){},target:{category:'자유',coin:'',title:'저장된 제목',body:'저장된 본문'}});await new Promise(r=>setImmediate(r));assert.match(f.node('posts').innerHTML,/저장된 제목/);assert.match(f.node('modalcontent').innerHTML,/저장된 본문/);
+  const f=fixture(async(url,options)=>{if(options.method==='POST')return Response.json([{id}]);if(String(url).includes('comments?'))return Response.json([]);return Response.json([{id,title:'저장된 제목',body:'저장된 본문',category:'자유',author_id:'user-123',created_at:'2026-10-17T08:00:00Z',profiles:{nickname:'작성자'},comments:[{count:0}]}],{headers:{'content-range':'0-0/1'}})});configure(f);f.run('writePost()');await f.node('writeform').onsubmit({preventDefault(){},target:{category:'자유',tags:'btc',title:'저장된 제목',body:'저장된 본문'}});await new Promise(r=>setImmediate(r));assert.match(f.node('posts').innerHTML,/저장된 제목/);assert.match(f.node('modalcontent').innerHTML,/저장된 본문/);
 });
 
 
@@ -97,4 +98,8 @@ test('sorting toggles volume and signed price change in both directions',()=>{
 });
 test('my activity queries only the signed-in author and computes grade from exact counts',async()=>{
  const urls=[];const f=fixture(async url=>{urls.push(new URL(url));const comment=String(url).includes('/comments?');return Response.json(comment?[{id:'c',body:'내 댓글',post_id:'p',created_at:'2026-10-17',posts:{title:'원글',category:'질문'}}]:[{id:'p',title:'내 글',category:'분석',created_at:'2026-10-17'}],{headers:{'content-range':comment?'0-0/3':'0-0/4'}})});configure(f);await f.run('loadMyActivity()');assert.ok(urls.every(url=>url.searchParams.get('author_id')==='eq.user-123'));assert.match(f.node('activitystats').innerHTML,/23점/);assert.match(f.node('activitystats').innerHTML,/참여자/);assert.match(f.node('activityitems').innerHTML,/내 글/);f.run("activityTab='comments'");await f.run('loadMyActivity()');assert.match(f.node('activityitems').innerHTML,/내 댓글/);assert.match(f.node('activityitems').innerHTML,/원글/);assert.equal(f.run('memberLevel(0,0).name'),'새싹');assert.equal(f.run('memberLevel(200,0).name'),'레전드');
+});
+
+test('post tags are mandatory, normalized and deduplicated before any write',async()=>{
+ let calls=0;const f=fixture(async()=>{calls++;return Response.json([])});configure(f);f.run('writePost()');await f.node('writeform').onsubmit({preventDefault(){},target:{category:'자유',tags:'  ',title:'태그 검사',body:'필수 태그 검사'}});assert.equal(calls,0);assert.match(f.node('writeerror').textContent,/태그/);assert.deepEqual(Array.from(f.run("parseTags('#usdt btc,USDT 한글')")),['USDT','BTC','한글']);assert.throws(()=>f.run("parseTags('<script>')"));
 });
