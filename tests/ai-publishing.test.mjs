@@ -11,3 +11,18 @@ test('unverified numeric claims, links, malformed output and incomplete generati
 function deps({recent=[],claim=123,stale=false,skip=false}={}){const calls=[];let generated=0;return {calls,get generated(){return generated;},due:()=>true,now:()=>1800000000000,market:async()=>({fetchedAt:new Date(stale?0:1800000000000).toISOString(),coins:[{symbol:'SUI',name:'수이',price:2,change:3,volume24h:10}]}),generate:async()=>{generated++;return skip?null:{title:'관찰 기록',body:text,usage:{total_tokens:20}};},admin:async(path,options)=>{const body=options?.body?JSON.parse(options.body):null;calls.push({path,body});if(path.includes('claim_ai_publish'))return claim;if(path.includes('posts?'))return recent;if(path.includes('finish_ai_publish'))return 'saved-post';return null;}};}
 test('claimed jobs publish one post with deterministic data and explicit provenance',async()=>{setup();const d=deps();try{const r=await runAIPublisher(request(),d);assert.equal(r.status,200);assert.equal((await r.json()).published,true);assert.equal(d.generated,1);const commit=d.calls.find(c=>c.path.includes('finish_ai_publish')).body;assert.match(commit.p_body,/알트모아 운영 AI 작성자/);assert.match(commit.p_body,/현재가 2 USDT/);assert.match(commit.p_body,/binance.com\/en\/trade\/SUI_USDT/);assert.equal(commit.p_tag,'SUI');}finally{cleanup();}});
 test('duplicate claims, stale data and repeated content cannot trigger publication',async()=>{setup();try{const occupied=deps({claim:null});await runAIPublisher(request(),occupied);assert.equal(occupied.generated,0);const stale=deps({stale:true});await runAIPublisher(request(),stale);assert.equal(stale.generated,0);const repeated=deps({recent:[{title:'관찰 기록',body:text}]});await runAIPublisher(request(),repeated);assert.equal(repeated.calls.some(c=>c.path.includes('finish_ai_publish')),false);assert.equal(repeated.calls.at(-1).body.state,'skipped');assert.equal(similarPost('같은 제목!','같은제목'),true);}finally{cleanup();}});
+
+test('short community posts fit the small output budget and rejection codes retain usage without generated content',async()=>{
+ setup();const original=globalThis.fetch;const body='거래대금이 늘었다고 방향까지 정해지는 건 아니잖아. 같은 움직임도 다르게 볼 수 있으니 가격과 참여 규모가 맞물리는지부터 보는 게 낫겠음. 괜히 한 가지 수치만 보고 단정하기는 좀 그렇다.';
+ try{
+  const result=content=>Response.json({status:'completed',usage:{input_tokens:123,output_tokens:100},output:[{type:'message',content:[{type:'output_text',text:JSON.stringify({title:'시장 관찰',body:content,skip:false})}]}]});
+  globalThis.fetch=async()=>result(body);assert.equal((await generateWriterPost(AI_WRITERS[0],{})).body,body);
+  for(const [content,code] of [['짧은 글','unverified_content_body_length'],[body+' 999달러','unverified_content_numbers'],[body+' https://evil.test','unverified_content_markup']]){
+   globalThis.fetch=async()=>result(content);
+   await assert.rejects(generateWriterPost(AI_WRITERS[0],{}),error=>error.message===code&&error.usage.input_tokens===123&&error.validation.body_length===content.length&&!('body' in error.validation));
+  }
+  const d=deps();d.generate=async()=>{throw Object.assign(Error('unverified_content_body_length'),{usage:{input_tokens:123,output_tokens:100},validation:{body_length:42,title_length:5}})};
+  await runAIPublisher(request(),d);const failure=d.calls.at(-1).body;
+  assert.equal(failure.error_code,'unverified_content_body_length');assert.equal(failure.usage.input_tokens,123);assert.equal(failure.usage.validation.body_length,42);
+ }finally{globalThis.fetch=original;cleanup()}
+});
