@@ -208,7 +208,7 @@ async function loadPosts() {
   if(!config?.communityReady){$('posts').innerHTML='<div class="connection"><b>커뮤니티를 준비하고 있어요.</b>회원 서버가 연결되면 실제 이야기를 나눌 수 있어요.</div>';$('boardstatus').textContent='회원·게시판 서버 미연결';$('pagination').innerHTML='';return;}
   $('boardstatus').textContent='게시글을 불러오는 중입니다.';
   $('posts').innerHTML='<div class="loading">이야기를 불러오는 중입니다.</div>';
-  const baseSelect='id,author_id,title,category,coin,created_at,profiles(nickname),comments(count)';
+  const baseSelect='id,author_id,title,category,coin,created_at,profiles!posts_author_id_fkey(nickname),comments(count)';
   const params=new URLSearchParams({select:baseSelect+(recommendationsReady===false?'':',recommendation_count'),status:'eq.published',order:postSort==='popular'?'recommendation_count.desc,created_at.desc,id.desc':'created_at.desc,id.desc',limit:String(PAGE_SIZE),offset:String(page*PAGE_SIZE)});
   if(category!=='전체')params.set('category','eq.'+category);
   if(postSort==='popular')params.set('recommendation_count','gt.0');
@@ -231,7 +231,7 @@ function changePage(delta) { page = Math.max(0, page + delta); loadPosts(); $('b
 async function openPost(id) {
   modal('<p class="loading">이야기를 불러오고 있어요.</p>', id);
   try {
-    const { data } = await db('posts?' + new URLSearchParams({ select: '*,profiles(nickname)', id: 'eq.' + id, status: 'eq.published' }));
+    const { data } = await db('posts?' + new URLSearchParams({ select: '*,profiles!posts_author_id_fkey(nickname)', id: 'eq.' + id, status: 'eq.published' }));
     if (activePostId !== id || !$('dialog').open) return;
     const p = data[0]; if (!p) return info('이야기를 찾을 수 없어요', '삭제되었거나 숨김 처리된 게시글입니다.');
     modal('<div class="eyebrow">' + escapeHTML(p.category) + (p.coin ? ' · ' + escapeHTML(p.coin) : '') + '</div><h2>' + escapeHTML(p.title) + '</h2><p class="subtle">' + escapeHTML(p.profiles?.nickname || '알트모아 회원') + memberBadge(p.author_id) + ' · ' + time(p.created_at) + '</p><div class="postbody">' + escapeHTML(p.body) + '</div><div class="post-tags">'+renderTags(p.tags)+'</div><div id="postphotosview" class="post-photos"></div><section id="postpoll" class="post-poll"></section><div id="postrecommendation" class="post-recommendation"><p class="subtle">추천을 불러오는 중입니다.</p></div><div class="row-actions"><button onclick="reportItem(\'posts\',\'' + id + '\')">신고</button>' + (session?.user?.id === p.author_id ? '<button class="danger" onclick="deleteItem(\'posts\',\'' + id + '\')">내 글 삭제</button>' : '') + (moderator ? '<button class="danger" onclick="hideItem(\'posts\',\'' + id + '\')">운영자 숨김</button>' : '') + '</div><h3 style="font-size:14px;margin-top:26px">댓글</h3><div id="comments"><p class="subtle">불러오는 중...</p></div><form id="commentform"><label class="subtle" for="commentbody">함께 나눌 이야기</label><textarea id="commentbody" name="body" maxlength="2000" required style="height:80px" placeholder="' + (session?.user ? '댓글을 입력하세요' : '로그인 후 댓글을 남길 수 있어요') + '"></textarea><button class="solid" id="commentsubmit">댓글 등록</button><p id="commenterror" class="subtle" role="alert"></p></form>', id);
@@ -248,7 +248,7 @@ async function openPost(id) {
 }
 async function loadComments(id) {
   try {
-    const { data } = await db('comments?' + new URLSearchParams({ select: 'id,author_id,body,created_at,profiles(nickname)', post_id: 'eq.' + id, status: 'eq.published', order: 'created_at.asc', limit: '200' }));
+    const { data } = await db('comments?' + new URLSearchParams({ select: 'id,author_id,body,created_at,profiles!comments_author_id_fkey(nickname)', post_id: 'eq.' + id, status: 'eq.published', order: 'created_at.asc', limit: '200' }));
     if (activePostId !== id || !$('comments')) return;
     $('comments').innerHTML = data.map(c => '<div class="comment"><small>' + escapeHTML(c.profiles?.nickname || '알트모아 회원') + memberBadge(c.author_id) + ' · ' + time(c.created_at) + '</small><p>' + escapeHTML(c.body) + '</p><div class="row-actions"><button onclick="reportItem(\'comments\',\'' + c.id + '\')">신고</button>' + (session?.user?.id === c.author_id ? '<button onclick="deleteItem(\'comments\',\'' + c.id + '\',\'' + id + '\')">삭제</button>' : '') + (moderator ? '<button onclick="hideItem(\'comments\',\'' + c.id + '\',\'' + id + '\')">숨김</button>' : '') + '</div></div>').join('') || '<p class="subtle">첫 댓글을 남겨보세요.</p>';
     loadMemberBadges(data.map(comment=>comment.author_id));

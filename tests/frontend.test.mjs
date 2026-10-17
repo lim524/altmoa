@@ -107,3 +107,9 @@ test('post tags are mandatory, normalized and deduplicated before any write',asy
 test('missing post feature columns explain the required migration and retain the composer',async()=>{
  const f=fixture(async()=>Response.json({code:'PGRST204',message:"Could not find the 'images' column of 'posts' in the schema cache"},{status:400}));configure(f);f.run('writePost()');await f.node('writeform').onsubmit({preventDefault(){},target:{category:'자유',tags:'btc',title:'입력 유지 검사',body:'본문 유지 검사'}});assert.match(f.node('writeerror').textContent,/upgrade-community.sql/);assert.equal(f.node('dialog').open,true);assert.equal(f.node('writesubmit').disabled,false);
 });
+
+test('post lists, popular lists, details and comments explicitly select the author relationship',async()=>{
+ const requests=[];const f=fixture(async url=>{const u=new URL(url);requests.push(u);const select=u.searchParams.get('select')||'';if(select.includes('profiles(nickname)'))return Response.json({code:'PGRST201',message:'More than one relationship'},{status:300});if(u.pathname.endsWith('/posts')&&select.startsWith('*'))return Response.json([{id:'00000000-0000-0000-0000-000000000001',title:'작성자 관계 검사',body:'추천자와 작성자는 별개입니다.',category:'분석',author_id:'user-123',created_at:new Date().toISOString(),profiles:{nickname:'작성자'}}]);return Response.json([]);});configure(f);await f.run('loadPosts()');await f.run('loadPopular()');await f.run("openPost('00000000-0000-0000-0000-000000000001')");
+ const authorQueries=requests.filter(u=>u.searchParams.get('select')?.includes('profiles'));
+ assert.ok(authorQueries.length>=8);for(const u of authorQueries)assert.match(u.searchParams.get('select'),u.pathname.endsWith('/comments')?/profiles!comments_author_id_fkey\(nickname\)/:/profiles!posts_author_id_fkey\(nickname\)/);assert.match(f.node('modalcontent').innerHTML,/작성자 관계 검사/);
+});
