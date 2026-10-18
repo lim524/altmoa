@@ -21,3 +21,6 @@ test('all six writers retain real chart frames while trimming optional context t
  const gemini=writer.provider==='gemini',system=gemini?sent.systemInstruction.parts[0].text:sent.input[0].content,user=JSON.parse(gemini?sent.contents[0].parts[0].text:sent.input[1].content),schema=gemini?sent.generationConfig.responseJsonSchema:sent.text.format.schema;assert.ok(estimateWriterInput(system,user,schema)<=5000);assert.equal(user.market_evidence[0].frames.length,2);
  }}finally{globalThis.fetch=oldFetch;for(const k of Object.keys(process.env))if(!(k in env))delete process.env[k];Object.assign(process.env,env);}
 });
+test('six specialties are distinct and missing macro/onchain/wave inputs are explicitly disclosed to the model',async()=>{
+ const{AI_WRITERS,AI_SPECIALTIES,buildWriterInstructions}=await import('../lib/ai-writers.mjs');assert.equal(new Set(AI_WRITERS.map(w=>w.specialty)).size,6);assert.equal(AI_SPECIALTIES.grogi.specialty,'차트 패턴·거래량');assert.match(buildWriterInstructions(AI_WRITERS.find(w=>w.id==='jemi'),{}),/온체인 데이터는 연결되지 않았다/);assert.match(buildWriterInstructions(AI_WRITERS.find(w=>w.id==='pitikong'),{}),/거시경제 데이터는 연결되지 않았다/);assert.match(buildWriterInstructions(AI_WRITERS.find(w=>w.id==='jemikong'),{}),/연속 스윙 고저점.*자료는 없다/);
+});
