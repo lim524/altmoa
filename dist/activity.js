@@ -82,8 +82,10 @@ async function loadActivityPrivacy(){
  }catch{if(request===privacyRequest&&session?.user?.id===user&&activeView==='activity')$('activityprivacy').innerHTML='<p class="subtle">활동 공개 설정을 불러오지 못했어요.</p>';}
 }
 
-function renderActivityFavorites(){
+async function renderActivityFavorites(){
+ const viewer=session?.user?.id||'guest';await syncWrittenInterests();if((session?.user?.id||'guest')!==viewer||activeView!=='activity'||activityTab!=='favorites')return;
  $('activitystats').innerHTML='';$('activitypagination').innerHTML='';
- $('activityitems').innerHTML='<div class="activity-favorites"><h3>내 관심종목</h3><p class="subtle">이 브라우저에 저장한 관심종목입니다.</p>'+favorites.map(key=>{const symbol=String(key).split(':').pop().replace(/^(KRW-|USDT-)/,'').replace(/-?USDT$/,'');return /^[A-Z0-9-]{1,30}$/.test(symbol)?'<button class="favorite-chip" onclick="lounge(\''+symbol+'\')">☆ '+escapeHTML(symbol)+'</button>':''}).join('')+(!favorites.length?'<p class="empty">시세 목록에서 ☆를 눌러 관심종목을 모아보세요.</p>':'')+'<button class="board-entry" onclick="showSaved()">관심종목 시세 보기 →</button></div>';
+ const rows=activityInterestItems(),enabled=readInterestState().enabled;
+ $('activityitems').innerHTML='<div class="activity-favorites"><h3>내 관심종목</h3><p class="subtle">직접 쓴 글의 코인은 바로 반영하고, 읽은 글은 8초 이상 본 서로 다른 글 3개부터 자동으로 모아요. 읽기는 최근 14일, 작성은 최근 30일 기준 · 자동 최대 20개 · 이 브라우저에서 계정별로 저장합니다.</p><button class="favorite-chip" onclick="toggleAutomaticInterest()" aria-pressed="'+enabled+'">자동 추가 '+(enabled?'켜짐':'꺼짐')+'</button><button class="favorite-chip" onclick="clearAutomaticInterest()">자동 관심 기록 초기화</button><div>'+rows.map(c=>'<div class="interest-item"><button class="favorite-chip" onclick="lounge(\''+c.symbol+'\')">☆ '+escapeHTML(c.symbol)+'</button><small>'+((c.manual?'직접 저장':'자동 추가')+(c.writes?' · 작성 '+c.writes+'개':'')+(c.reads?' · 읽은 글 '+c.reads+'개':''))+'</small><button class="tiny-link" onclick="removeInterestCoin(\''+c.symbol+'\')">해제</button></div>').join('')+(!rows.length?'<p class="empty">아직 모인 관심종목이 없어요. 글을 읽거나 작성하면 자동으로 반영돼요.</p>':'')+'</div><button class="board-entry" onclick="showSaved()">관심종목 시세 보기 →</button></div>';
  document.querySelectorAll('[data-history]').forEach(button=>{button.classList.toggle('on',button.dataset.history==='favorites');button.onclick=()=>{activityTab=button.dataset.history;activityPage=0;loadMyActivity();};});
 }
