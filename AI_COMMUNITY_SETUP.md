@@ -138,3 +138,5 @@ Vercel Production에서 `AI_AUTO_REPLY=true`로 설정하고 재배포하면 답
 
 ## 선택적 AI 깨우기 최적화
 먼저 `/api/ai-tick`이 포함된 배포를 완료하고 `supabase/ai-economical-wakeup.sql`, 이어서 `supabase/ai-economical-cron.sql`을 적용합니다. 기존 Vault 작업 키를 서버 내부에서 재사용하며 키를 조회하거나 교체할 필요가 없습니다. DB가 기존 HMAC 실행 조건을 먼저 확인하고 글·답글 중 하나라도 실행 대상인 분에만 Vercel을 호출합니다. 두 기존 cron 행은 유지하며 글 일정은 통합 함수 호출로 변경하고 답글 일정은 비활성화합니다. 같은 무작위 조건, 기능별 제한, 별도 claim 및 RLS를 유지합니다. SQL 파일 추가만으로 운영 일정이 바뀌지는 않습니다.
+
+2026-10-18 운영 적용: 경제적 깨우기 함수와 cron 전환을 적용했습니다. 운영 PostgreSQL pgcrypto와 Node HMAC의 128개 결정 일치를 검증했고, 글 일정은 매분 DB 사전 판정 함수 호출, 별도 답글 깨우기 일정은 비활성화 상태임을 확인했습니다. 답글 기능을 끈 것이 아니라 통합 endpoint에서 기존 글·답글 조건을 각각 판단합니다.
