@@ -239,11 +239,13 @@ async function loadPosts() {
     $('posts').innerHTML=posts.length?communityTable(posts):'<div class="empty">'+(postSort==='popular'?'아직 추천받은 글이 없어요.':query||coinFilter?'조건에 맞는 이야기가 없어요.':'아직 이야기가 없어요. 첫 글을 남겨보세요.')+'</div>';
     loadMemberBadges(posts.map(post=>post.author_id));
     $('boardstatus').textContent=(coinFilter?coinFilter+' · ':'')+(postSort==='popular'?'누적 추천 순 · ':'최신순 · ')+'총 '+total+'개 이야기';
-    $('pagination').innerHTML=(page>0?'<button onclick="changePage(-1)">← 이전</button>':'')+'<span>'+(page+1)+'</span>'+((page+1)*PAGE_SIZE<total?'<button onclick="changePage(1)">다음 →</button>':'');
+    const pages=Math.max(1,Math.ceil(total/PAGE_SIZE)),start=Math.max(0,Math.min(page-2,pages-5));
+    $('pagination').innerHTML=(page>0?'<button type="button" onclick="changePage(-1)" aria-label="게시글 이전 페이지">← 이전</button>':'')+Array.from({length:Math.min(5,pages)},(_,i)=>start+i).map(index=>'<button type="button" onclick="goBoardPage('+index+')"'+(index===page?' class="on" aria-current="page"':'')+' aria-label="게시글 '+(index+1)+' 페이지">'+(index+1)+'</button>').join('')+(page+1<pages?'<button type="button" onclick="changePage(1)" aria-label="게시글 다음 페이지">다음 →</button>':'');
   }catch(error){if(requestId!==feedRequest)return;$('posts').innerHTML='<div class="connection"><b>'+(postSort==='popular'?'추천 인기글을 준비하고 있어요.':'게시글을 불러오지 못했어요.')+'</b><button onclick="openBoard(\''+category+'\')">최신 이야기 보기 →</button></div>';$('boardstatus').textContent=postSort==='popular'?'추천 기능 연결 후 순위를 표시합니다.':errorMessage(error);$('pagination').innerHTML='';}
   document.querySelectorAll('[data-tab]').forEach(button=>button.classList.toggle('on',button.dataset.tab===category));
 }
-function changePage(delta) { page = Math.max(0, page + delta);const params=new URLSearchParams(location.search);params.set('page',String(page+1));history.replaceState(history.state,'','/?'+params);loadPosts(); $('boardpanel').scrollIntoView({ behavior: 'smooth' }); }
+function changePage(delta){goBoardPage(page+delta);}
+function goBoardPage(index) { if(!Number.isInteger(index)||index<0||index>=Math.max(1,Math.ceil(total/PAGE_SIZE)))return;page=index;const params=new URLSearchParams(location.search);params.set('page',String(page+1));history.replaceState(history.state,'','/?'+params);loadPosts(); $('boardpanel').scrollIntoView({ behavior: 'smooth' }); }
 let postPageRequest=0,replyTargetId=null,currentThreadComments=[];
 async function openPost(id,options={}) {
   if(!validPostId(id)){toast('올바른 게시글 주소가 아닙니다.');navigate('board',{history:false});return;}
