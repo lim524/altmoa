@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {aiScheduleDue,aiWriterIndex} from '../lib/ai-schedule.mjs';
 import {runAIPublisher} from '../lib/ai-publisher.mjs';
 import {runAIReplies} from '../lib/ai-replies.mjs';
-import {AI_WRITERS,generateWriterReply,estimateWriterInput} from '../lib/ai-writers.mjs';
+import {AI_WRITERS,generateWriterReply,generateWriterPost,estimateWriterInput} from '../lib/ai-writers.mjs';
 
 test('independent random minutes allow quiet windows and bursts, with stable retries and no six-writer cycle',()=>{
  const secret='schedule-test-private-1234567890123456789',post=[],reply=[],writers=[];
@@ -32,7 +32,7 @@ test('early minute polls do not claim jobs, read the database or invoke models',
  }finally{for(const key of Object.keys(process.env))if(!(key in saved))delete process.env[key];Object.assign(process.env,saved)}
 });
 
-test('large candidate sets shrink before the paid call and all providers enforce 500 output tokens',async()=>{
+test('large candidate sets shrink before the paid call and all providers enforce separate post and reply output budgets',async()=>{
  const saved={...process.env},original=globalThis.fetch;
  Object.assign(process.env,{XAI_API_KEY:'test',XAI_MODEL:'grok-4.3',OPENAI_API_KEY:'test',OPENAI_MODEL:'gpt-5.4-mini',GEMINI_API_KEY:'test',GEMINI_MODEL:'gemini-3.1-flash-lite'});
  try{
@@ -46,7 +46,14 @@ test('large candidate sets shrink before the paid call and all providers enforce
    const schema=provider==='gemini'?sent.generationConfig.responseJsonSchema:sent.text.format.schema;
    assert.ok(user.candidates.length<context.candidates.length);
    assert.ok(estimateWriterInput(system,user,schema)<=5000);
-   assert.equal(provider==='gemini'?sent.generationConfig.maxOutputTokens:sent.max_output_tokens,500);
+   assert.equal(provider==='gemini'?sent.generationConfig.maxOutputTokens:sent.max_output_tokens,1200);
+  }
+  for(const provider of ['grok','openai','gemini']){
+   let sent;const body='관찰할 조건을 먼저 따져보자는 이야기야. '.repeat(70);
+   globalThis.fetch=async(url,options)=>{sent=JSON.parse(options.body);const text=JSON.stringify({title:'서로 다른 해석',body,skip:false});return Response.json(provider==='gemini'?{candidates:[{finishReason:'STOP',content:{parts:[{text}]}}]}:{status:'completed',output:[{type:'message',content:[{type:'output_text',text}]}]})};
+   const result=await generateWriterPost(AI_WRITERS.find(w=>w.provider===provider),{kind:'casual',subject:'대화'});
+   assert.ok(result.body.length>1000);
+   assert.equal(provider==='gemini'?sent.generationConfig.maxOutputTokens:sent.max_output_tokens,2400);
   }
   let calls=0;globalThis.fetch=async()=>{calls++};
   await assert.rejects(generateWriterReply(AI_WRITERS[0],{candidates:[{key:'one',body:'가'.repeat(10000)}]}),/input_budget_exceeded/);
