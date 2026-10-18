@@ -145,8 +145,8 @@ async function loadAttention(force=false) {
   attentionRows=data.items||[];
   $('attentionbadge').textContent='내부 통합 집계';
   $('attentioncontent').className=attentionRows.length?'tablebox':'connection';
-  $('attentioncontent').innerHTML=attentionRows.length?'<table><thead><tr><th>순위</th><th>코인</th><th>언급 글</th><th>24시간 등락률</th></tr></thead><tbody>'+attentionRows.map((c,i)=>'<tr><td class="rank">'+(i+1)+'</td><td><button class="coinline" onclick="attentionDetail(\''+c.symbol+'\')">'+coinIcon(c.symbol)+'<span><b>'+escapeHTML(c.symbol)+'</b><small>'+escapeHTML(c.name)+'</small></span></button></td><td>'+Number(c.mentions).toLocaleString()+'건</td><td>'+attentionChange(c.priceChange24h)+'</td></tr>').join('')+'</tbody></table>':'<b>아직 집계된 코인 언급이 없어요.</b><span>'+escapeHTML(data.message||'공개 게시글의 코인 언급을 집계합니다.')+'</span>';
-  $('attentionnote').textContent='알트모아 공개 글 제목·코인 태그 · 동일 제목 중복 제외 · '+time(data.fetchedAt)+' KST 조회 · 등락률: 바이낸스 현물 USDT / 최근 24시간'+(data.priceFetchedAt?' · 시세 '+time(data.priceFetchedAt)+' KST':' · 시세 연결 지연')+(data.sampled?' · 최근 '+Number(data.sampleSize)+'개 표본':'');
+  $('attentioncontent').innerHTML=attentionRows.length?'<table><thead><tr><th>순위</th><th>코인</th><th>글·댓글 언급</th><th>24시간 등락률</th></tr></thead><tbody>'+attentionRows.map((c,i)=>'<tr><td class="rank">'+(i+1)+'</td><td><button class="coinline" onclick="attentionDetail(\''+c.symbol+'\')">'+coinIcon(c.symbol)+'<span><b>'+escapeHTML(c.symbol)+'</b><small>'+escapeHTML(c.name)+'</small></span></button></td><td>'+Number(c.mentions).toLocaleString()+'건</td><td>'+attentionChange(c.priceChange24h)+'</td></tr>').join('')+'</tbody></table>':'<b>아직 집계된 코인 언급이 없어요.</b><span>'+escapeHTML(data.message||'공개 게시글의 코인 언급을 집계합니다.')+'</span>';
+  $('attentionnote').textContent='공개 글 제목·태그 + 댓글 본문·원글 코인 · 동일 글 제목/동일 작성자의 같은 글 내 동일 댓글 중복 제외 · '+time(data.fetchedAt)+' KST 조회 · 등락률: 바이낸스 현물 USDT / 최근 24시간'+(data.priceFetchedAt?' · 시세 '+time(data.priceFetchedAt)+' KST':' · 시세 연결 지연')+(data.sampled?' · 최근 '+Number(data.sampleSize)+'개 표본':'');
 
  } catch {
   if(requestId!==attentionRequest)return;$('attentionbadge').textContent='연결 지연';$('attentioncontent').className='connection';$('attentioncontent').innerHTML='<b>관심도를 불러오지 못했어요.</b><button onclick="loadAttention()">다시 시도 →</button>';
@@ -158,7 +158,7 @@ function attentionDetail(symbol){
   if(link.postId&&/^[a-f0-9-]{36}$/i.test(link.postId))return '<li><button onclick="openPost(\''+link.postId+'\')">알트모아 관련 글 '+(i+1)+' →</button></li>';
   try{const u=new URL(link.url);if(u.protocol!=='https:')return '';return '<li><a href="'+escapeHTML(u.href)+'" target="_blank" rel="noopener noreferrer">'+escapeHTML(link.sourceName)+' 원문 '+(i+1)+' ↗</a></li>'}catch{return ''}
  }).join('');
- modal('<div class="eyebrow">'+'ALTMOA COMMUNITY'+'</div><h2 class="coin-detail-heading">'+coinIcon(symbol)+escapeHTML(item.name)+' <span class="subtle">'+escapeHTML(symbol)+'</span></h2><p>24시간 등락률 '+attentionChange(item.priceChange24h)+' <small class="subtle">바이낸스 현물 USDT</small></p><p>선택한 기간에 '+Number(item.mentions)+'개의 중복 제외 언급 글이 관측됐어요.</p><p class="subtle">'+'내부 게시글의 언급 수이며, 댓글과 추천 수는 포함하지 않습니다.'+'</p><ul class="attention-links">'+links+'</ul>');
+ modal('<div class="eyebrow">'+'ALTMOA COMMUNITY'+'</div><h2 class="coin-detail-heading">'+coinIcon(symbol)+escapeHTML(item.name)+' <span class="subtle">'+escapeHTML(symbol)+'</span></h2><p>24시간 등락률 '+attentionChange(item.priceChange24h)+' <small class="subtle">바이낸스 현물 USDT</small></p><p>선택한 기간에 '+Number(item.mentions)+'개의 중복 제외 언급 글이 관측됐어요.</p><p class="subtle">'+'글 언급과 댓글 언급의 합계입니다. 댓글은 원글의 코인과 댓글에 직접 언급한 코인에 각각 한 번 반영하며 추천은 포함하지 않습니다.'+'</p><ul class="attention-links">'+links+'</ul>');
 }
 async function loadMarket(exchange=selectedExchange,{force=false}={}) {
   loadPageTechnicals();

@@ -8,7 +8,7 @@ try{
  assert.equal(await claim(one),true);assert.equal(await claim(two),false);const snapshot={version:'v1',status:'collecting',asOf:new Date().toISOString(),score:null,coins:[]};assert.equal(await finish(two,snapshot),false);assert.equal(await finish(one,snapshot),true);assert.equal(await claim(two),false);
  const context=(await db.query('select market_activity_context(now(),false) c')).rows[0].c;assert.equal(context.chart.length,1);assert.deepEqual(context.baseline,[]);
  await db.exec("update market_activity_cache set computed_at=now()-interval '11 minutes',next_attempt_at='-infinity'");assert.equal(await claim(two),true);assert.equal(await finish(two,null),true);assert.deepEqual((await db.query('select snapshot from market_activity_cache')).rows[0].snapshot,snapshot);assert.equal(await claim(one),false);
- for(let i=1;i<=7;i++)await db.query("insert into market_activity_history values(now()-$1*interval '1 day',jsonb_build_object('version','v1','asOf',now()-$1*interval '1 day','score',50,'coins','[]'::jsonb))",[i]);
+ for(let i=0;i<7;i++)await db.query("insert into market_activity_history values(date_trunc('day',now())-$1*interval '1 day',jsonb_build_object('version','v2','asOf',date_trunc('day',now())-$1*interval '1 day','score',50,'coins','[]'::jsonb))",[i]);
  const baseline=(await db.query('select market_activity_context(now(),true) c')).rows[0].c;assert.equal(baseline.baseline.length,7);assert.equal(baseline.chart.length,2);
  console.log('Activity database verified: private tables/RPCs, shared claims, old snapshot preservation, seven daily samples, thin chart context.');
 }finally{await db.close()}

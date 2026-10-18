@@ -12,7 +12,7 @@ begin
  d:=extensions.hmac(convert_to('irregular-v2:'||p_kind||':due:'||v_minute::text,'UTF8'),convert_to(p_secret,'UTF8'),'sha256');
  v_activity:=(get_byte(a,0)::bigint*16777216+get_byte(a,1)::bigint*65536+get_byte(a,2)::bigint*256+get_byte(a,3))%3;
  v_due:=get_byte(d,0)::bigint*16777216+get_byte(d,1)::bigint*65536+get_byte(d,2)::bigint*256+get_byte(d,3);
- v_threshold:=case v_activity when 0 then 0.12 when 1 then 0.20 else 0.28 end;
+ v_threshold:=case when p_kind='reply' then case v_activity when 0 then 0.24 when 1 then 0.40 else 0.56 end else case v_activity when 0 then 0.04 when 1 then 0.06 else 0.08 end end;
  return v_due<v_threshold*4294967296;
 end;$$;
 revoke all on function public.ai_minute_due(text,timestamptz,text) from public,anon,authenticated;

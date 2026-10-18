@@ -256,3 +256,6 @@ test('price results stop at ten pages and technical reverse sorting stays inside
  f.run("technicalRankData={interval:'1h',totalUniverse:100,insufficient:0,failed:0,asOf:new Date().toISOString(),items:Array.from({length:120},(_,i)=>({symbol:'R'+i,name:'코인',scoring:{total:100-i/2,trend:30,rsi:20,volume:10},status:'ready',rsi14:60,volumeRatio:1,closedAt:new Date().toISOString()}))};renderTechnicalRanking();goTechnicalRankPage(9)");assert.match(f.node('technicalpagination').innerHTML,/91–100 \/ 100개/);assert.match(f.node('technicalrows').innerHTML,/>R99</);f.run('goTechnicalRankPage(10)');assert.equal(f.run('technicalRankPage'),9);
  f.run("setTechnicalSort('asc')");assert.equal(f.run('technicalRankPage'),0);assert.match(f.node('technicalrows').innerHTML,/>R99</);assert.doesNotMatch(f.node('technicalrows').innerHTML,/>R0</);assert.match(f.node('technicalrankstatus').textContent,/낮은 순/);assert.equal(calls,0);
 });
+test('activity detail shortcut opens the actual methodology section even when already on the rank page',()=>{
+ const f=fixture(async()=>Response.json({status:'collecting',items:[]}));f.run("activeView='rank';activityData={status:'building'};activityAt=Date.now();showActivityDetails()");assert.equal(f.run('activeView'),'rank');assert.equal(f.node('activitymethod').open,true);
+});

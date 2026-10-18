@@ -13,9 +13,9 @@ test('independent random minutes allow quiet windows and bursts, with stable ret
   const writer=aiWriterIndex('post',at,6,secret);assert.equal(aiWriterIndex('post',at+59000,6,secret),writer);if(due)writers.push(writer);
  }
  const events=post.flatMap((due,i)=>due?[i]:[]),gaps=events.slice(1).map((m,i)=>m-events[i]);
- assert.ok(events.length>1500&&events.length<2500);assert.ok(gaps.includes(1));assert.ok(gaps.some(n=>n>15));
+ assert.ok(events.length>400&&events.length<800);assert.ok(gaps.includes(1));assert.ok(gaps.some(n=>n>15));
  const windows=Array.from({length:2000},(_,i)=>post.slice(i*5,i*5+5).filter(Boolean).length);
- assert.ok(windows.includes(0));assert.ok(windows.some(n=>n>=3));assert.notDeepEqual(post,reply);
+ assert.ok(windows.includes(0));assert.ok(windows.some(n=>n>=2));assert.notDeepEqual(post,reply);
  assert.equal(new Set(writers).size,6);assert.ok(writers.some((w,i)=>i&&w===writers[i-1]));assert.ok(writers.some((w,i)=>i>=6&&w!==writers[i-6]));
 });
 

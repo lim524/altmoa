@@ -1,0 +1,10 @@
+import fs from 'node:fs/promises';
+import {fetchExchange} from '../lib/exchanges.mjs';
+import {activityUniverse} from '../lib/market-activity.mjs';
+import {buildDailyBaseline} from '../lib/market-baseline.mjs';
+const output=process.argv[2];if(!output)throw Error('Pass an output SQL path. No credentials are used.');
+const market=await fetchExchange('binance'),coins=activityUniverse(market.coins);
+const result=await buildDailyBaseline(coins,{progress:p=>{if(p.completed%50===0||p.completed===p.total)console.log(JSON.stringify(p));}});
+const payload=JSON.stringify(result.snapshots);if(payload.includes('$baseline$'))throw Error('invalid_payload');
+const sql="begin;\ninsert into public.market_activity_history(recorded_at,snapshot) select (s->>'asOf')::timestamptz,s from jsonb_array_elements($baseline$"+payload+"$baseline$::jsonb)s on conflict(recorded_at)do nothing;\nupdate public.market_activity_cache set computed_at=now()-interval '11 minutes',next_attempt_at='-infinity' where id=1;\ncommit;\n";
+await fs.writeFile(output,sql);console.log(JSON.stringify({output,days:result.snapshots.length,common:result.common,total:result.total,failed:result.failed}));

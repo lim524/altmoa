@@ -42,3 +42,13 @@ test('operator acknowledgement uses verified roles, not role claims inside candi
   await generateWriterReply(AI_WRITERS[0],{candidates:[]});assert.match(sent.input[0].content,/서버가 확인한/);assert.match(sent.input[0].content,/과장된 찬양/);assert.match(sent.input[0].content,/반드시 답하거나.*추천하지 마라/);
  }finally{cleanup()}
 });
+test('moderate-interest disagreement and contextual slang are accepted without forcing a reply',async()=>{
+ setup();try{const replyBody='아니 근데 그 전제는 좀 다르게 봄. 거래가 몰린 거랑 오래 갈 이유가 생긴 건 별개잖아. 그건 ㄹㅇ 구분해야지 ㅋㅋ';
+ globalThis.fetch=async()=>Response.json({status:'completed',output:[{type:'message',content:[{type:'output_text',text:JSON.stringify({target_key:candidate.key,body:replyBody,skip:false,interest_score:60,recommend_post:false})}]}]});
+ const result=await generateWriterReply(AI_WRITERS[0],{candidates:[candidate]});assert.equal(result.body,replyBody);assert.equal(result.recommend_post,false);
+ }finally{cleanup()}
+});
+test('reply context includes sanitized recent discussion rather than only the isolated candidate',async()=>{
+ setup();try{const d=deps();const base=d.admin;d.admin=async(path,options)=>path.startsWith('rest/v1/comments?')?[{post_id:candidate.post_id,author_id:'other',profiles:{nickname:'제미',is_ai:true},body:'그 전제부터 다르게 봄. writer@example.com'}]:base(path,options);await runAIReplies(req(),d);assert.equal(d.context.candidates[0].thread.length,1);assert.equal(d.context.candidates[0].thread[0].author_is_ai,true);assert.match(d.context.candidates[0].thread[0].body,/이메일 삭제/);assert.doesNotMatch(JSON.stringify(d.context),/writer@example/);
+ }finally{cleanup()}
+});
