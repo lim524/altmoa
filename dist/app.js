@@ -168,7 +168,8 @@ async function loadMarket(exchange=selectedExchange,{force=false}={}) {
   if(!force&&marketAttemptExchange===exchange&&Date.now()-marketAttemptAt<MARKET_REFRESH_MS){if(coins.length)renderCoins();return;}
   marketAttemptAt=Date.now();marketAttemptExchange=exchange;
   const requestId=++marketRequest;marketBusy=true;loadingExchange=exchange;
-  if(selectedExchange!==exchange){selectedExchange=exchange;marketPage=0;$('marketpagination').innerHTML='';coins=[];lastFetchedAt=null;marketFailed=false;$('coins').innerHTML='<tr><td colspan="6" class="loading">선택한 거래소 시세를 불러오고 있어요.</td></tr>';$('ticker').innerHTML='<span class="inline-status">시세 연결 중...</span>';$('marketbadge').textContent='연결 중';$('markettime').textContent='연결 중';}
+  if(!coins.length)$('coins').innerHTML='<tr><td colspan="6"><div class="inline-loader" role="status"><span></span>시세를 불러오는 중</div></td></tr>';
+  if(selectedExchange!==exchange){selectedExchange=exchange;marketPage=0;$('marketpagination').innerHTML='';coins=[];lastFetchedAt=null;marketFailed=false;$('coins').innerHTML='<tr><td colspan="6"><div class="inline-loader" role="status"><span></span>시세를 불러오는 중</div></td></tr>';$('ticker').innerHTML='<span class="inline-status">시세 연결 중...</span>';$('marketbadge').textContent='연결 중';$('markettime').textContent='연결 중';}
   try {
     const [{data}]=await Promise.all([fetchJSON('/api/market?exchange='+encodeURIComponent(exchange)),loadConversion()]);if(requestId!==marketRequest)return;
     if(!Array.isArray(data.coins)||!data.coins.length||(data.id&&data.id!==exchange))throw new Error('invalid_market');
