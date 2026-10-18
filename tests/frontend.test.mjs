@@ -260,3 +260,15 @@ test('price results stop at ten pages and technical reverse sorting stays inside
 test('activity detail shortcut opens the actual methodology section even when already on the rank page',()=>{
  const f=fixture(async()=>Response.json({status:'collecting',items:[]}));f.run("activeView='rank';activityData={status:'building'};activityAt=Date.now();showActivityDetails()");assert.equal(f.run('activeView'),'rank');assert.equal(f.node('activitymethod').open,true);
 });
+
+test('new tab restores via HttpOnly session API and never stores refresh tokens in browser storage',async()=>{
+ let sent;const f=fixture(async(url,options)=>{sent={url:String(url),body:JSON.parse(options.body)};return Response.json({access_token:'restored',expires_at:Date.now()/1000+3600,user:{id:'member'}})});
+ f.run("config={communityReady:true};session=null");await f.run('restoreLogin()');assert.equal(sent.url,'/api/auth-session');assert.equal(sent.body.action,'refresh');assert.equal(f.run('session.user.id'),'member');assert.equal(f.run('session.refresh_token'),undefined);
+ f.run("setSession({access_token:'safe',refresh_token:'must-not-save',expires_at:123,user:{id:'member'}})");assert.equal(f.data.get('altmoa-session').includes('must-not-save'),false);
+});
+test('transient restore failures keep cached login, while invalid cookie clears it',async()=>{
+ let status=503;const f=fixture(async()=>Response.json({error:'temporary'},{status}));configure(f);await assert.rejects(f.run('restoreLogin()'));assert.equal(f.run('session.user.id'),'user-123');status=401;await f.run('restoreLogin()');assert.equal(f.run('session'),null);
+});
+test('late refresh responses cannot restore login after explicit local logout',async()=>{
+ let finish;const f=fixture(()=>new Promise(resolve=>finish=resolve));configure(f);f.run('session.expires_at=0');const pending=f.run('freshToken()');f.run('setSession(null)');finish(Response.json({access_token:'late',expires_at:Date.now()/1000+3600,user:{id:'user-123'}}));await assert.rejects(pending,/계정/);assert.equal(f.run('session'),null);
+});

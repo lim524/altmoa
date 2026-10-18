@@ -3,7 +3,7 @@ const $ = id => document.getElementById(id);
 const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const read = (key, fallback, storage = localStorage) => { try { return JSON.parse(storage.getItem(key)) ?? fallback; } catch { return fallback; } };
 const store = (key, value, storage = localStorage) => { try { storage.setItem(key, JSON.stringify(value)); } catch { toast('브라우저 저장 공간을 사용할 수 없어요.'); } };
-let config = null, session = read('altmoa-session', null, sessionStorage), refreshPromise = null;
+let config = null, session = read('altmoa-session', null, sessionStorage), refreshPromise = null, authEpoch=0;
 let coins = [], posts = [], favorites = read('altmoa-stars', []), sort = 'volume', sortDirection='desc', query = '', category = '전체', coinFilter = '', savedOnly = false;
 let page = 0, total = 0, feedRequest = 0, marketBusy = false, activePostId = null, moderator = false;
 let lastFetchedAt = null, marketFailed = false, marketPage = 0;
@@ -79,21 +79,28 @@ async function fetchJSON(url, options = {}) {
   if (!response.ok) { const error = new Error(data?.msg || data?.error_description || data?.message || data?.error || 'Request failed'); error.status = response.status; error.code = data?.code; throw error; }
   return { data, response };
 }
-function setSession(value) { const oldUser=session?.user?.id;session = value; store('altmoa-session', value, sessionStorage); updateAuth();if(oldUser!==session?.user?.id){profileRequest++;$('membercontent').innerHTML='';if(activeView==='member'&&config?.communityReady)loadMemberProfile();} }
+function setSession(value) { const oldUser=session?.user?.id;session = value?{access_token:value.access_token,expires_at:value.expires_at,user:value.user}:null;authEpoch++;store('altmoa-session', session, sessionStorage);if(oldUser!==session?.user?.id)moderator=false; updateAuth();if(oldUser!==session?.user?.id){profileRequest++;$('membercontent').innerHTML='';if(activeView==='member'&&config?.communityReady)loadMemberProfile();} }
 function updateAuth() { const label = session?.user ? '내 계정' : '로그인'; $('authbutton').textContent = label; $('mobileauth').textContent = label; }
-async function freshToken() {
-  if (!session?.access_token) return null;
-  if (session.expires_at > Date.now() / 1000 + 60) return session.access_token;
-  if (!refreshPromise) refreshPromise = (async () => {
-    try {
-      const { data } = await fetchJSON(config.supabaseUrl + '/auth/v1/token?grant_type=refresh_token', { method: 'POST', headers: { apikey: config.supabaseKey, 'Content-Type': 'application/json' }, body: JSON.stringify({ refresh_token: session.refresh_token }) });
-      setSession({ ...data, expires_at: data.expires_at || Date.now() / 1000 + data.expires_in });
-      return data.access_token;
-    } catch (error) { if ([400, 401, 403].includes(error.status)) setSession(null); throw error; }
-    finally { refreshPromise = null; }
-  })();
-  return refreshPromise;
+async function sessionRequest(action,extra={}){
+ const run=()=>fetchJSON('/api/auth-session',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json',...(action==='logout'&&session?.access_token?{Authorization:'Bearer '+session.access_token}:{})},body:JSON.stringify({action,...extra})});
+ return typeof navigator!=='undefined'&&navigator.locks?.request?navigator.locks.request('altmoa-auth-session',run):run();
 }
+async function restoreLogin(){
+ const epoch=authEpoch;
+ try{const{data}=await sessionRequest(session?.refresh_token?'exchange':'refresh',session?.refresh_token?{refresh_token:session.refresh_token}:{});if(epoch===authEpoch)setSession(data);}
+ catch(error){if(error.status===401&&epoch===authEpoch)setSession(null);else if(error.status!==401)throw error;}
+}
+async function freshToken(){
+ if(!session?.access_token)return null;
+ if(session.expires_at>Date.now()/1000+60)return session.access_token;
+ if(!refreshPromise){const epoch=authEpoch;refreshPromise=(async()=>{try{const{data}=await sessionRequest('refresh');if(epoch!==authEpoch)throw Error('로그인 계정이 변경되었습니다.');setSession(data);return data.access_token;}catch(error){if(error.status===401&&epoch===authEpoch)setSession(null);throw error;}finally{refreshPromise=null;}})();}
+ return refreshPromise;
+}
+function broadcastAuth(action){store('altmoa-auth-event',{action,at:Date.now(),nonce:Math.random()});}
+if(typeof window.addEventListener==='function')window.addEventListener('storage',event=>{
+ if(event.key!=='altmoa-auth-event')return;
+ const change=read('altmoa-auth-event',null);if(change?.action==='logout')setSession(null);else if(change?.action==='login'&&config?.communityReady)restoreLogin().then(refreshModerator).catch(()=>{});
+});
 async function db(path, options = {}) {
   if (!config?.communityReady) throw new Error('게시판 연결 준비 중');
   const token = await freshToken();
@@ -111,14 +118,17 @@ function authModal(mode = 'login') {
       const path = signup ? '/signup' : '/token?grant_type=password';
       const body = { email: form.get('email').trim(), password: form.get('password') };
       if (signup) body.data = { nickname: form.get('nickname').trim() };
-      const { data } = await fetchJSON(config.supabaseUrl + '/auth/v1' + path, { method: 'POST', headers: { apikey: config.supabaseKey, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-      if (data.access_token) { setSession({ ...data, expires_at: data.expires_at || Date.now() / 1000 + data.expires_in }); await refreshModerator(); $('dialog').close(); toast('로그인했어요.'); if(activeView==='activity')await loadMyActivity();else if(activeView==='write')writePost({history:false});else if(activeView==='post'&&activePostId)await openPost(activePostId,{history:false});else await loadPosts(); }
+      let {data}=signup?await fetchJSON(config.supabaseUrl+'/auth/v1'+path,{method:'POST',headers:{apikey:config.supabaseKey,'Content-Type':'application/json'},body:JSON.stringify(body)}):await sessionRequest('login',body);if(signup&&data.access_token)({data}=await sessionRequest('exchange',{refresh_token:data.refresh_token}));
+      if (data.access_token) { setSession({ ...data, expires_at: data.expires_at || Date.now() / 1000 + data.expires_in });broadcastAuth('login'); await refreshModerator(); $('dialog').close(); toast('로그인했어요.'); if(activeView==='activity')await loadMyActivity();else if(activeView==='write')writePost({history:false});else if(activeView==='post'&&activePostId)await openPost(activePostId,{history:false});else await loadPosts(); }
       else info('인증 메일을 확인해 주세요', '받은 메일에서 인증을 완료한 뒤 로그인해 주세요. 메일이 없다면 스팸함도 확인해 주세요.');
     } catch (error) { if ($('autherror')) $('autherror').textContent = errorMessage(error); }
     finally { if (submit.isConnected) submit.disabled = false; }
   };
 }
-async function signOut() { try { const token = await freshToken(); if (token) await fetchJSON(config.supabaseUrl + '/auth/v1/logout', { method: 'POST', headers: { apikey: config.supabaseKey, Authorization: 'Bearer ' + token } }); } catch {} setSession(null); moderator = false; $('dialog').close(); toast('로그아웃했어요.'); if(activeView==='activity')await loadMyActivity();else if(activeView==='write')writePost({history:false});else if(activeView==='post'&&activePostId)await openPost(activePostId,{history:false});else await loadPosts(); }
+async function signOut(){
+ try{await sessionRequest('logout');}catch(error){toast('로그아웃에 실패했어요. 연결을 확인한 뒤 다시 시도해 주세요.');return;}
+ setSession(null);broadcastAuth('logout');moderator=false;$('dialog').close();toast('로그아웃했어요.');if(activeView==='activity')await loadMyActivity();else if(activeView==='write')writePost({history:false});else if(activeView==='post'&&activePostId)await openPost(activePostId,{history:false});else await loadPosts();
+}
 function resetPassword() {
   modal('<div class="eyebrow">ACCOUNT RECOVERY</div><h2>비밀번호 재설정</h2><form id="recoverform"><label>가입한 이메일<input name="email" type="email" required autocomplete="email"></label><button class="solid wide">재설정 메일 받기</button><p id="recoverstatus" role="status"></p></form>');
   $('recoverform').onsubmit = async event => { event.preventDefault(); const button = event.target.querySelector('button'); button.disabled = true; try { await fetchJSON(config.supabaseUrl + '/auth/v1/recover?redirect_to=' + encodeURIComponent(location.origin + '/'), { method: 'POST', headers: { apikey: config.supabaseKey, 'Content-Type': 'application/json' }, body: JSON.stringify({ email: new FormData(event.target).get('email').trim() }) }); info('메일을 확인해 주세요', '등록된 계정이 있다면 비밀번호 재설정 메일이 발송됩니다.'); } catch (error) { if ($('recoverstatus')) $('recoverstatus').textContent = errorMessage(error); } finally { if (button.isConnected) button.disabled = false; } };
@@ -395,14 +405,12 @@ async function init() {
     $('connectionstatus').textContent = config.communityReady ? '회원·게시판 연결됨' : '회원·게시판 준비 중';
     if (config.communityReady) {
       const hash = new URLSearchParams(location.hash.slice(1)); let recovery = false;
-      if (hash.has('access_token')) {
-        const token = hash.get('access_token'); const { data: user } = await fetchJSON(config.supabaseUrl + '/auth/v1/user', { headers: { apikey: config.supabaseKey, Authorization: 'Bearer ' + token } });
-        setSession({ access_token: token, refresh_token: hash.get('refresh_token'), expires_at: Date.now() / 1000 + Number(hash.get('expires_in') || 3600), user }); recovery = hash.get('type') === 'recovery'; history.replaceState({}, '', location.pathname + location.search);
-      } else if (session?.access_token) {
-        try { const token = await freshToken(); const { data: user } = await fetchJSON(config.supabaseUrl + '/auth/v1/user', { headers: { apikey: config.supabaseKey, Authorization: 'Bearer ' + token } }); setSession({ ...session, user }); } catch (error) { if ([400, 401, 403].includes(error.status)) setSession(null); }
-      }
+      if(hash.has('refresh_token')){
+        const refreshToken=hash.get('refresh_token');recovery=hash.get('type')==='recovery';history.replaceState({},'',location.pathname+location.search);
+        const{data}=await sessionRequest('exchange',{refresh_token:refreshToken});setSession(data);broadcastAuth('login');
+      }else await restoreLogin();
       await refreshModerator(); if (recovery) passwordModal();
-    } else setSession(null);
+    }
   } catch { config = { communityReady: false }; $('connectionstatus').textContent = '커뮤니티 연결 지연'; }
   if(activeView==='board')await loadPosts();
   if(activeView==='home')await loadPopular();

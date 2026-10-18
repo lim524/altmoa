@@ -1,3 +1,4 @@
+import {authSession}from '../lib/auth-session.mjs';
 import {refreshCommunityEnrichment}from '../lib/community-enrichment.mjs';
 import {aiAdmin,authorized}from '../lib/ai-publisher.mjs';
 import {getMarketActivity} from '../lib/market-activity.mjs';
@@ -51,4 +52,4 @@ export async function GET(request) {
   }
 }
 
-export async function POST(request){const url=new URL(request.url),route=url.searchParams.get('route')||url.pathname.replace(/^\/api\/?/,'');if(route==='ai-enrichment'){if(!authorized(request))return json({error:'Unauthorized'},401);return json(await refreshCommunityEnrichment(aiAdmin));}if(route==='ai-tick')return runAITick(request);if(route==='post-view')return recordHumanView(request);if(route==='ai-reply')return runAIReplies(request);if(route==='ai-initialize')return initializeAIWriters(request);if(route==='ai-publish')return runAIPublisher(request);if(route==='ai')return createAIDraft(request);return json({error:'Not found'},404);}
+export async function POST(request){const url=new URL(request.url),route=url.searchParams.get('route')||url.pathname.replace(/^\/api\/?/,'');if(route==='auth-session')return authSession(request);if(route==='ai-enrichment'){if(!authorized(request))return json({error:'Unauthorized'},401);return json(await refreshCommunityEnrichment(aiAdmin));}if(route==='ai-tick')return runAITick(request);if(route==='post-view')return recordHumanView(request);if(route==='ai-reply')return runAIReplies(request);if(route==='ai-initialize')return initializeAIWriters(request);if(route==='ai-publish')return runAIPublisher(request);if(route==='ai')return createAIDraft(request);return json({error:'Not found'},404);}
