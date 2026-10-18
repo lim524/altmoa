@@ -195,7 +195,7 @@ function renderCoins() {
   const pages=Math.max(1,Math.ceil(list.length/MARKET_PAGE_SIZE));
   marketPage=Math.max(0,Math.min(marketPage,pages-1));
   const offset=marketPage*MARKET_PAGE_SIZE;
-  $('ranktitle').textContent = savedOnly ? '나의 관심 코인 · 선택 거래소' : '알트코인 시세';
+  $('ranktitle').textContent = savedOnly ? '나의 관심 코인 · 선택 거래소' : '코인 시세';
   $('coins').innerHTML = list.slice(offset, offset+MARKET_PAGE_SIZE).map((c, i) => '<tr><td class="rank">' + (offset+i+1) + '</td><td><button class="coinline" onclick="detail(\'' + c.symbol + '\')">' + coinIcon(c.iconSymbol === null ? '' : c.iconSymbol || c.symbol, c.symbol,c.logoUrl) + '<span><b>' + escapeHTML(c.symbol) + '</b><small>' + escapeHTML(c.name) + '</small></span></button></td><td>' + displayCoinPrice(c) + '</td><td class="' + (c.change >= 0 ? 'up' : 'down') + '">' + (c.change >= 0 ? '+' : '') + c.change.toFixed(2) + '%</td><td>' + displayCoinVolume(c) + '</td><td><button class="star ' + (isFavorite(c) ? 'saved' : '') + '" onclick="star(\'' + c.symbol + '\')" aria-label="' + c.symbol + ' 관심 ' + (isFavorite(c) ? '해제' : '저장') + '">' + (isFavorite(c) ? '★' : '☆') + '</button></td></tr>').join('') || '<tr><td colspan="6" class="empty">' + (savedOnly ? '저장한 관심 코인이 없어요. ☆로 코인을 모아보세요.' : '검색 결과가 없습니다.') + '</td></tr>';
   loadPageTechnicals(list.slice(offset,offset+MARKET_PAGE_SIZE));
   if(!list.length){$('marketpagination').innerHTML='';return;}
