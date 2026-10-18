@@ -249,3 +249,10 @@ test('community table uses column headers and independently links authors and po
  const f=fixture(async()=>Response.json([]));const html=f.run(`communityTable([{id:'00000000-0000-0000-0000-000000000001',author_id:'00000000-0000-0000-0000-000000000002',title:'<b>제목</b>',category:'자유',profiles:{nickname:'사용자'},created_at:'2026-10-18T01:00Z',recommendation_count:7,ai_recommendation_count:2,view_count:20}])`);
  assert.match(html,/<table class="community-table/);assert.match(html,/scope="col" class="cell-author">글쓴이/);assert.match(html,/&lt;b&gt;제목/);assert.doesNotMatch(html,/<b>제목/);assert.match(html,/AI 2/);assert.match(html,/followPost/);assert.match(html,/followMember/);
 });
+
+test('price results stop at ten pages and technical reverse sorting stays inside its 100 candidates without requests',()=>{
+ let calls=0;const f=fixture(async()=>{calls++;return Response.json({})});
+ f.run("coins=Array.from({length:120},(_,i)=>({symbol:'P'+i,name:'코인'+i,price:1,change:i,volume24h:120-i}));renderCoins();goMarketPage(99)");assert.equal(f.run('marketPage'),9);assert.match(f.node('marketpagination').innerHTML,/총 50개/);assert.match(f.node('coins').innerHTML,/>P49</);assert.doesNotMatch(f.node('coins').innerHTML,/>P50</);
+ f.run("technicalRankData={interval:'1h',totalUniverse:100,insufficient:0,failed:0,asOf:new Date().toISOString(),items:Array.from({length:120},(_,i)=>({symbol:'R'+i,name:'코인',scoring:{total:100-i/2,trend:30,rsi:20,volume:10},status:'ready',rsi14:60,volumeRatio:1,closedAt:new Date().toISOString()}))};renderTechnicalRanking();goTechnicalRankPage(9)");assert.match(f.node('technicalpagination').innerHTML,/91–100 \/ 100개/);assert.match(f.node('technicalrows').innerHTML,/>R99</);f.run('goTechnicalRankPage(10)');assert.equal(f.run('technicalRankPage'),9);
+ f.run("setTechnicalSort('asc')");assert.equal(f.run('technicalRankPage'),0);assert.match(f.node('technicalrows').innerHTML,/>R99</);assert.doesNotMatch(f.node('technicalrows').innerHTML,/>R0</);assert.match(f.node('technicalrankstatus').textContent,/낮은 순/);assert.equal(calls,0);
+});

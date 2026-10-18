@@ -9,7 +9,7 @@ let page = 0, total = 0, feedRequest = 0, marketBusy = false, activePostId = nul
 let lastFetchedAt = null, marketFailed = false, marketPage = 0;
 const MARKET_REFRESH_MS=180000,IDLE_REFRESH_MS=300000;
 let marketAttemptAt=0,marketAttemptExchange=null,lastInteractionAt=Date.now(),homeRefreshAt=0;
-const MARKET_PAGE_SIZE=5;
+const MARKET_PAGE_SIZE=5,MAX_MARKET_PAGES=10;
 let displayCurrency=read('altmoa-display-currency','USDT');
 if(!['KRW','USDT'].includes(displayCurrency))displayCurrency='USDT';
 let conversion=null,conversionPromise=null;
@@ -189,7 +189,7 @@ async function loadMarket(exchange=selectedExchange,{force=false}={}) {
   } finally {if(requestId===marketRequest){marketBusy=false;loadingExchange=null;}}
 }
 function renderCoins() {
-  const list = coins.filter(c => c.symbol !== 'BTC' && (!savedOnly || isFavorite(c)) && (!query || (c.name + ' ' + c.symbol).toLowerCase().includes(query.toLowerCase()))).sort((a, b) => (sortDirection==='desc'?-1:1)*((sort==='change'?a.change-b.change:a.volume24h-b.volume24h)||a.symbol.localeCompare(b.symbol)));
+  const list = coins.slice(0,MARKET_PAGE_SIZE*MAX_MARKET_PAGES).filter(c => c.symbol !== 'BTC' && (!savedOnly || isFavorite(c)) && (!query || (c.name + ' ' + c.symbol).toLowerCase().includes(query.toLowerCase()))).sort((a, b) => (sortDirection==='desc'?-1:1)*((sort==='change'?a.change-b.change:a.volume24h-b.volume24h)||a.symbol.localeCompare(b.symbol)));
   renderCurrencyControls();
   document.querySelectorAll('[data-sort]').forEach(button=>{const current=button.dataset.sort===sort;button.classList.toggle('on',current);button.setAttribute('aria-pressed',String(current));button.textContent=button.dataset.sort==='volume'?'거래대금 '+(current&&sortDirection==='asc'?'↑':'↓'):current&&sortDirection==='asc'?'하락률 ↑':'상승률 ↓';});
   const pages=Math.max(1,Math.ceil(list.length/MARKET_PAGE_SIZE));
@@ -416,7 +416,10 @@ function technicalStats(data,expanded=false){
 }
 function technicalURL(coin,interval,exchange){return '/api/technical?'+new URLSearchParams({symbol:coin.symbol,interval,exchange,asset:coin.assetId||''});}
 let technicalRankData=null,technicalRankPage=0,technicalRankBusy=false,technicalRankLoadingInterval=null,technicalRankFetchedAt=0,technicalRankPolls=0;
-const TECHNICAL_PAGE_SIZE=10;
+const TECHNICAL_PAGE_SIZE=10,MAX_TECHNICAL_PAGES=10;
+let technicalSortDirection='desc';
+function setTechnicalSort(direction){if(!['asc','desc'].includes(direction))return;technicalSortDirection=direction;technicalRankPage=0;renderTechnicalRanking();}
+function sortedTechnicalItems(){return (technicalRankData?.items||[]).slice(0,TECHNICAL_PAGE_SIZE*MAX_TECHNICAL_PAGES).sort((a,b)=>(technicalSortDirection==='asc'?1:-1)*(a.scoring.total-b.scoring.total)||b.volume24h-a.volume24h||a.symbol.localeCompare(b.symbol));}
 async function loadPageTechnicals(){
  if(!['market','saved'].includes(activeView))return;
  const interval=technicalInterval;
@@ -424,7 +427,7 @@ async function loadPageTechnicals(){
  if(technicalRankData?.interval===interval&&Date.now()-technicalRankFetchedAt<300000){renderTechnicalRanking();return;}
  if(technicalRankBusy&&technicalRankLoadingInterval===interval)return;
  const request=++technicalRequest;technicalRankBusy=true;technicalRankLoadingInterval=interval;
- $('technicalrows').innerHTML='<p class="subtle">전체 코인을 집계한 뒤 점수순으로 정렬하고 있어요. 첫 조회는 최대 2분 정도 걸릴 수 있습니다.</p>';$('technicalpagination').innerHTML='';$('technicalrankstatus').textContent='바이낸스 전체 USDT 현물 · 완료된 봉 기준';
+ $('technicalrows').innerHTML='<p class="subtle">거래대금 상위 최대 100개 코인을 집계하고 있어요. 첫 조회는 최대 2분 정도 걸릴 수 있습니다.</p>';$('technicalpagination').innerHTML='';$('technicalrankstatus').textContent='바이낸스 USDT 현물 · 거래대금 상위 최대 100개 · 완료된 봉 기준';
  try{
   const {data}=await fetchJSON('/api/technical-rank?'+new URLSearchParams({interval}),{signal:AbortSignal.timeout(110000)});if(request!==technicalRequest)return;
   if(data.status==='building'){
@@ -435,19 +438,21 @@ async function loadPageTechnicals(){
   }
   if(data.status!=='ready'||!Array.isArray(data.items))throw Error('invalid_ranking');
   technicalRankData=data;technicalRankFetchedAt=data.stale?Date.now()-270000:(Date.parse(data.completedAt||data.asOf)||Date.now());technicalRankPolls=0;renderTechnicalRanking();
- }catch{if(request===technicalRequest){$('technicalrows').innerHTML='<p class="subtle">랭킹 연결이 지연되고 있습니다. <button onclick="retryTechnicalRanking()">다시 확인 →</button></p>';$('technicalrankstatus').textContent='전체 집계를 완료하지 못해 부분 점수 순위는 표시하지 않습니다.';}}
+ }catch{if(request===technicalRequest){$('technicalrows').innerHTML='<p class="subtle">랭킹 연결이 지연되고 있습니다. <button onclick="retryTechnicalRanking()">다시 확인 →</button></p>';$('technicalrankstatus').textContent='선정 대상 집계를 완료하지 못해 부분 점수 순위는 표시하지 않습니다.';}}
  finally{if(request===technicalRequest){technicalRankBusy=false;technicalRankLoadingInterval=null;}}
 }
 function retryTechnicalRanking(){technicalRankFetchedAt=0;technicalRankPolls=0;loadPageTechnicals();}
 function renderTechnicalRanking(){
  const data=technicalRankData;if(!data||data.interval!==technicalInterval)return;
- const pages=Math.max(1,Math.ceil(data.items.length/TECHNICAL_PAGE_SIZE));technicalRankPage=Math.min(Math.max(0,technicalRankPage),pages-1);const offset=technicalRankPage*TECHNICAL_PAGE_SIZE;
- $('technicalrankstatus').textContent=(data.stale?'갱신 지연 · 이전 집계 · ':'')+technicalIntervals[data.interval]+' · '+data.items.length+'개 평가 / 전체 '+Number(data.totalUniverse)+'개 · 데이터 부족 '+Number(data.insufficient)+'개 · 조회 실패 '+Number(data.failed)+'개 · 기준 '+time(data.asOf)+' KST · 약 5분 캐시';
- $('technicalrows').innerHTML=data.items.slice(offset,offset+TECHNICAL_PAGE_SIZE).map((c,i)=>'<article class="technical-card"><button class="technical-coin-button" onclick="openTechnicalRankCoin(\''+c.symbol+'\')"><span class="summary-rank">'+(offset+i+1)+'</span>'+coinIcon(c.symbol,c.symbol,c.logoUrl)+'<span class="technical-coin-copy"><b>'+escapeHTML(c.symbol)+'</b><small>'+escapeHTML(c.name)+'</small></span><strong>'+Number(c.scoring.total).toFixed(1)+'<small>/ 100점</small></strong></button>'+technicalStats(c)+'<small class="technical-score-parts">추세 '+c.scoring.trend+'/50 · RSI '+c.scoring.rsi+'/30 · 거래량 '+c.scoring.volume+'/20</small></article>').join('')||'<p class="subtle">현재 기준으로 점수를 계산할 수 있는 코인이 없습니다.</p>';
+ const items=sortedTechnicalItems();
+ document.querySelectorAll('[data-technical-sort]').forEach(b=>{const on=b.dataset.technicalSort===technicalSortDirection;b.classList.toggle('on',on);b.setAttribute('aria-pressed',String(on));});
+ const pages=Math.max(1,Math.ceil(items.length/TECHNICAL_PAGE_SIZE));technicalRankPage=Math.min(Math.max(0,technicalRankPage),pages-1);const offset=technicalRankPage*TECHNICAL_PAGE_SIZE;
+ $('technicalrankstatus').textContent=(data.stale?'갱신 지연 · 이전 집계 · ':'')+technicalIntervals[data.interval]+' · '+items.length+'개 평가 / 거래대금 상위 대상 '+Number(data.totalUniverse)+'개 · '+(technicalSortDirection==='asc'?'점수 낮은 순':'점수 높은 순')+' · 최대 10페이지 · 데이터 부족 '+Number(data.insufficient)+'개 · 조회 실패 '+Number(data.failed)+'개 · 기준 '+time(data.asOf)+' KST · 약 5분 캐시';
+ $('technicalrows').innerHTML=items.slice(offset,offset+TECHNICAL_PAGE_SIZE).map((c,i)=>'<article class="technical-card"><button class="technical-coin-button" onclick="openTechnicalRankCoin(\''+c.symbol+'\')"><span class="summary-rank">'+(offset+i+1)+'</span>'+coinIcon(c.symbol,c.symbol,c.logoUrl)+'<span class="technical-coin-copy"><b>'+escapeHTML(c.symbol)+'</b><small>'+escapeHTML(c.name)+'</small></span><strong>'+Number(c.scoring.total).toFixed(1)+'<small>/ 100점</small></strong></button>'+technicalStats(c)+'<small class="technical-score-parts">추세 '+c.scoring.trend+'/50 · RSI '+c.scoring.rsi+'/30 · 거래량 '+c.scoring.volume+'/20</small></article>').join('')||'<p class="subtle">현재 기준으로 점수를 계산할 수 있는 코인이 없습니다.</p>';
  const start=Math.max(0,Math.min(technicalRankPage-2,pages-5));
- $('technicalpagination').innerHTML=data.items.length?'<span>'+(offset+1)+'–'+Math.min(offset+TECHNICAL_PAGE_SIZE,data.items.length)+' / '+data.items.length+'개</span><div class="market-page-buttons"><button onclick="goTechnicalRankPage('+(technicalRankPage-1)+')"'+(technicalRankPage===0?' disabled':'')+'>← 이전</button>'+Array.from({length:Math.min(5,pages)},(_,i)=>start+i).map(index=>'<button onclick="goTechnicalRankPage('+index+')"'+(index===technicalRankPage?' class="on" aria-current="page"':'')+'>'+(index+1)+'</button>').join('')+'<button onclick="goTechnicalRankPage('+(technicalRankPage+1)+')"'+(technicalRankPage===pages-1?' disabled':'')+'>다음 →</button></div>':'';
+ $('technicalpagination').innerHTML=items.length?'<span>'+(offset+1)+'–'+Math.min(offset+TECHNICAL_PAGE_SIZE,items.length)+' / '+items.length+'개</span><div class="market-page-buttons"><button onclick="goTechnicalRankPage('+(technicalRankPage-1)+')"'+(technicalRankPage===0?' disabled':'')+'>← 이전</button>'+Array.from({length:Math.min(5,pages)},(_,i)=>start+i).map(index=>'<button onclick="goTechnicalRankPage('+index+')"'+(index===technicalRankPage?' class="on" aria-current="page"':'')+'>'+(index+1)+'</button>').join('')+'<button onclick="goTechnicalRankPage('+(technicalRankPage+1)+')"'+(technicalRankPage===pages-1?' disabled':'')+'>다음 →</button></div>':'';
 }
-function goTechnicalRankPage(page){if(!Number.isInteger(page)||!technicalRankData||page<0||page>=Math.ceil(technicalRankData.items.length/TECHNICAL_PAGE_SIZE))return;technicalRankPage=page;renderTechnicalRanking();}
+function goTechnicalRankPage(page){if(!Number.isInteger(page)||!technicalRankData||page<0||page>=Math.ceil(Math.min(technicalRankData.items.length,TECHNICAL_PAGE_SIZE*MAX_TECHNICAL_PAGES)/TECHNICAL_PAGE_SIZE))return;technicalRankPage=page;renderTechnicalRanking();}
 function openTechnicalRankCoin(symbol){
  const c=technicalRankData?.items.find(c=>c.symbol===symbol);if(!c)return;++detailRequest;
  modal('<div class="eyebrow">바이낸스 USDT 현물 · '+technicalIntervals[technicalRankData.interval]+'</div><h2 class="coin-detail-heading">'+coinIcon(c.symbol,c.symbol,c.logoUrl)+escapeHTML(c.name)+' '+escapeHTML(c.symbol)+'</h2>'+technicalStats(c,true)+'<p class="subtle">랭킹 기준 '+time(technicalRankData.asOf)+' KST · 자체 기술지표 점수이며 투자 권유·상승 확률이 아닙니다.</p><button class="solid" onclick="document.getElementById(\'dialog\').close();lounge(\''+symbol+'\')">'+escapeHTML(symbol)+' 이야기 보기 →</button>');

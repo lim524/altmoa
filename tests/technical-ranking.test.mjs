@@ -16,11 +16,20 @@ test('full-universe ranking sorts before pagination, has stable tie breaks and e
  const ties=rankTechnicals([{symbol:'ZZ',volume24h:1,scoring:{total:20}},{symbol:'AA',volume24h:1,scoring:{total:20}},{symbol:'MISS',scoring:null}]);assert.deepEqual(ties.map(x=>x.symbol),['AA','ZZ']);
 });
 test('shared snapshots prevent visitors repeating scans and preserve the previous snapshot on failure',async()=>{
- const data={interval:'1h',items:[],status:'ready'};let scans=0,claims=0;const current=Date.now();
+ const data={interval:'1h',items:[],status:'ready',scopeVersion:'volume100-v1'};let scans=0,claims=0;const current=Date.now();
  const cached=await getTechnicalRanking(new URL('https://test/api/technical-rank'),{admin:async()=>[{snapshot:data,computed_at:new Date(current).toISOString()}],build:async()=>{scans++;},now:()=>current});assert.equal(cached.stale,false);assert.equal(scans,0);
  const admin=async(path)=>{if(path.includes('technical_rank_cache?'))return [];if(path.includes('claim_')){claims++;return claims===1;}return true;};
  const first=await getTechnicalRanking(new URL('https://test/api/technical-rank'),{admin,build:async()=>{scans++;return data;}});assert.equal(first.stale,false);assert.equal(scans,1);
  const pending=await getTechnicalRanking(new URL('https://test/api/technical-rank'),{admin,build:async()=>{scans++;return data;}});assert.equal(pending.status,'building');assert.equal(scans,1);
  const staleAdmin=async path=>path.includes('technical_rank_cache?')?[{snapshot:data,computed_at:'2020-01-01T00:00:00Z'}]:true;
  const stale=await getTechnicalRanking(new URL('https://test/api/technical-rank'),{admin:staleAdmin,build:async()=>{throw Error('offline');}});assert.equal(stale.stale,true);
+});
+test('only the 100 most traded candidates request candles even when lower-volume coins could score higher',async()=>{
+ const coins=Array.from({length:500},(_,i)=>({symbol:'T'+String(i).padStart(3,'0'),volume24h:500-i})).reverse(),calls=[];
+ const result=await buildTechnicalRanking('1h',{market:async()=>({coins}),technical:async url=>{calls.push(url.searchParams.get('symbol'));return {...base,scoring:scoreTechnical(base)};}});
+ assert.equal(calls.length,100);assert.equal(new Set(calls).size,100);assert.ok(calls.includes('T000'));assert.ok(calls.includes('T099'));assert.ok(!calls.includes('T100'));assert.equal(result.items.length,100);assert.equal(result.totalAvailable,500);assert.equal(result.totalUniverse,100);assert.equal(result.scopeVersion,'volume100-v1');
+});
+test('legacy unlimited snapshots are never served as the capped ranking while a refresh is pending',async()=>{
+ const old={status:'ready',items:Array.from({length:500},()=>({}))};
+ const result=await getTechnicalRanking(new URL('https://test/api/technical-rank'),{admin:async path=>path.includes('technical_rank_cache?')?[{snapshot:old,computed_at:new Date().toISOString()}]:false});assert.equal(result.status,'building');assert.equal(result.items,undefined);
 });

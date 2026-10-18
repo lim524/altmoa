@@ -50,3 +50,10 @@ test('attention reports zero connected sources; unknown routes are 404', async (
   const body = await (await GET(req('attention'))).json(); assert.equal(body.status,'not_connected'); assert.equal(body.sources.length,1); assert.equal(body.scope,'internal');assert.equal(body.region,undefined);assert.equal(body.sources[0].id,'altmoa'); assert.deepEqual(body.items,[]);
   assert.equal((await GET(req('nope'))).status,404);
 });
+
+test('public market responses include no more than 50 non-BTC coins',async()=>{
+ const previous=globalThis.fetch;
+ const rows=Array.from({length:120},(_,i)=>({market:'KRW-T'+i,trade_price:1,signed_change_rate:0,acc_trade_price_24h:120-i}));
+ globalThis.fetch=async url=>Response.json(String(url).includes('market/all')?rows.map(t=>({market:t.market,korean_name:t.market})):rows);
+ try{const response=await GET(req('market?exchange=upbit')),data=await response.json();assert.equal(response.status,200);assert.equal(data.coins.length,50);assert.equal(data.totalAvailable,120);assert.equal(data.limit,50);assert.equal(data.coins[0].symbol,'T0');assert.equal(data.coins.at(-1).symbol,'T49');}finally{globalThis.fetch=previous;}
+});

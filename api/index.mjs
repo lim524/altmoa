@@ -40,7 +40,8 @@ export async function GET(request) {
   const exchange=u.searchParams.get('exchange')||'binance';
   if(!EXCHANGES[exchange])return json({error:'지원하지 않는 거래소입니다.'},400);
   try {
-    return json(await fetchExchange(exchange),200,'public, max-age=0, s-maxage=30, stale-while-revalidate=60');
+    const snapshot=await fetchExchange(exchange),eligible=snapshot.coins.filter(c=>c.symbol!=='BTC');
+    return json({...snapshot,coins:eligible.slice(0,50),limit:50,totalAvailable:eligible.length},200,'public, max-age=0, s-maxage=30, stale-while-revalidate=60');
   } catch (error) {
     console.error('market_fetch_failed',exchange,error.status||error.name);
     return json({ exchange, source:EXCHANGES[exchange].source, error:EXCHANGES[exchange].name+' 시세를 불러오지 못했습니다. 다른 거래소를 선택하거나 잠시 후 다시 시도해 주세요.' }, 502);
