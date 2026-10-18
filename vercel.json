@@ -46,7 +46,7 @@
       ]
     },
     {
-      "source": "/:asset(app\\.js|community\\.js|composer\\.js|activity\\.js|coin-logos\\.js|styles\\.css|telemetry\\.mjs|contact\\.js)",
+      "source": "/:asset(app\\.js|market-activity\\.js|community\\.js|composer\\.js|activity\\.js|coin-logos\\.js|styles\\.css|telemetry\\.mjs|contact\\.js)",
       "has": [
         {
           "type": "query",

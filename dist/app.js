@@ -235,7 +235,7 @@ async function loadPosts() {
     catch(error){if(postSort==='latest'&&/recommendation_count|schema cache|does not exist/i.test(error.message||'')){recommendationsReady=false;params.set('select',baseSelect.replace('ai_recommendation_count,',''));result=await db('posts?'+params,{headers:{Prefer:'count=exact'}});}else throw error;}
     if(requestId!==feedRequest)return;
     const {data,response}=result;posts=data;total=Number(response.headers.get('content-range')?.split('/')[1])||data.length;
-    $('posts').innerHTML=posts.map(post=>'<div class="post"><span class="tag">'+escapeHTML(post.category)+'</span><a class="post-title" href="/?view=post&amp;post='+post.id+'" onclick="return followPost(event,\''+post.id+'\')">'+escapeHTML(post.title)+'<span class="comments">['+Number(post.comments?.[0]?.count||0)+']</span></a>'+(Number.isInteger(post.recommendation_count)?'<span class="post-votes">추천 '+post.recommendation_count+'<br><small>AI '+Number(post.ai_recommendation_count||0)+'</small></span>':'')+'<small>'+memberLink(post.author_id,post.profiles?.nickname)+memberBadge(post.author_id)+'<br>'+time(post.created_at)+' · 조회 '+Number(post.view_count||0).toLocaleString()+'</small></div>').join('')||'<div class="empty">'+(postSort==='popular'?'아직 추천받은 글이 없어요.':query||coinFilter?'조건에 맞는 이야기가 없어요.':'아직 이야기가 없어요. 첫 글을 남겨보세요.')+'</div>';
+    $('posts').innerHTML=posts.length?communityTable(posts):'<div class="empty">'+(postSort==='popular'?'아직 추천받은 글이 없어요.':query||coinFilter?'조건에 맞는 이야기가 없어요.':'아직 이야기가 없어요. 첫 글을 남겨보세요.')+'</div>';
     loadMemberBadges(posts.map(post=>post.author_id));
     $('boardstatus').textContent=(coinFilter?coinFilter+' · ':'')+(postSort==='popular'?'누적 추천 순 · ':'최신순 · ')+'총 '+total+'개 이야기';
     $('pagination').innerHTML=(page>0?'<button onclick="changePage(-1)">← 이전</button>':'')+'<span>'+(page+1)+'</span>'+((page+1)*PAGE_SIZE<total?'<button onclick="changePage(1)">다음 →</button>':'');
@@ -363,7 +363,7 @@ function refreshVisiblePage(){
  if($('autorefreshstatus'))$('autorefreshstatus').textContent=idle?'5분 미사용 · 자동 갱신 일시정지 · 화면을 조작하면 다시 시작합니다.':'시세 3분 · 관심도 5분 갱신 · 5분 미사용 시 자동 갱신 일시정지';
  if(idle)return;
  if(['market','saved'].includes(activeView))loadMarket();
- if(activeView==='rank')loadAttention();
+ if(activeView==='rank'){loadAttention();loadMarketActivity();}
  if(activeView==='home'&&Date.now()-homeRefreshAt>=180000){homeRefreshAt=Date.now();loadPopular();loadAttentionSummary();}
 }
 function registerInteraction(){const resume=Date.now()-lastInteractionAt>=IDLE_REFRESH_MS;lastInteractionAt=Date.now();if(resume)refreshVisiblePage();}

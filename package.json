@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "test": "node --test tests/*.test.mjs",
-    "check": "node --check dist/app.js && node --check dist/community.js && node --check dist/activity.js && node --check api/index.mjs && node --check dist/composer.js && node --check dist/contact.js && node --check lib/ai-writers.mjs && node --check lib/ai-publisher.mjs && node --check lib/ai-replies.mjs && node --check lib/post-views.mjs && node --check lib/attention-prices.mjs && node --check lib/public-community.mjs && node --check lib/technical.mjs && node --check lib/technical-score.mjs && node --check lib/technical-ranking.mjs && node --check lib/ai-tick.mjs",
+    "check": "node --check dist/app.js && node --check dist/community.js && node --check dist/activity.js && node --check api/index.mjs && node --check dist/composer.js && node --check dist/contact.js && node --check lib/ai-writers.mjs && node --check lib/ai-publisher.mjs && node --check lib/ai-replies.mjs && node --check lib/post-views.mjs && node --check lib/attention-prices.mjs && node --check lib/public-community.mjs && node --check lib/technical.mjs && node --check lib/technical-score.mjs && node --check lib/technical-ranking.mjs && node --check lib/ai-tick.mjs && node --check dist/market-activity.js && node --check lib/market-activity.mjs",
     "build": "node scripts/build.mjs"
   }
 }

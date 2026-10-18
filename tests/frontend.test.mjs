@@ -4,6 +4,7 @@ import vm from 'node:vm';
 import fs from 'node:fs';
 const composerCode=fs.readFileSync(new URL('../dist/composer.js',import.meta.url),'utf8');
 const activityCode=fs.readFileSync(new URL('../dist/activity.js',import.meta.url),'utf8');
+const marketActivityCode=fs.readFileSync(new URL('../dist/market-activity.js',import.meta.url),'utf8');
 const communityCode=fs.readFileSync(new URL('../dist/community.js',import.meta.url),'utf8');
 const code = fs.readFileSync(new URL('../dist/app.js',import.meta.url),'utf8').replace(/init\(\);\s*$/, '');
 function fixture(handler) {
@@ -12,7 +13,7 @@ function fixture(handler) {
   const element = id => { if (!nodes.has(id)) nodes.set(id,{id,textContent:'',innerHTML:'',value:'',style:{},isConnected:true,disabled:false,classList:{toggle(){},contains(){return false},add(){}},addEventListener(){},showModal(){this.open=true},close(){this.open=false},scrollIntoView(){},setAttribute(){},insertAdjacentHTML(_,html){this.innerHTML+=html}});return nodes.get(id); };
   const views=[['homepage','home'],['boardpanel','board'],['marketpanel','market'],['rankpanel','rank'],['postpage','post'],['writepage','write']].map(([id,view])=>Object.assign(element(id),{dataset:{view},hidden:view!=='home'}));
   const context = vm.createContext({ document:{getElementById:element,querySelectorAll:selector=>selector==='[data-view]'?views:selector==='[data-poll-option]'?[...nodes.values()].filter(n=>n.dataset?.pollOption!==undefined):[],addEventListener(){},body:{classList:{toggle(){},contains(){return false},add(){}}}}, window:{scrollTo(){}}, localStorage:storage,sessionStorage:storage,setTimeout:()=>1,clearTimeout(){},clearInterval(){},setInterval(){},URL,URLSearchParams,AbortSignal,location:{origin:'https://altmoa.example',pathname:'/',search:'',hash:''},history:{replaceState(){},pushState(state,title,path){this.lastPath=path}},fetch:(url,options)=>String(url)==='/api/conversion'?Promise.resolve(Response.json({rate:1400,source:'업비트 USDT/KRW',fetchedAt:new Date().toISOString()})):handler(url,options),FormData:class{constructor(fields){this.fields=fields}get(k){return this.fields[k]}} });
-  vm.runInContext(composerCode+'\n'+activityCode+'\n'+communityCode+'\n'+code,context);
+  vm.runInContext(composerCode+'\n'+activityCode+'\n'+marketActivityCode+'\n'+communityCode+'\n'+code,context);
   return { run:source=>vm.runInContext(source,context),node:element,data };
 }
 const market = { id:'upbit',name:'업비트',source:'Upbit',currency:'KRW', fetchedAt:'2026-10-17T08:00:00Z',coins:[{symbol:'SUI',market:'KRW-SUI',exchange:'upbit',quote:'KRW',name:'수이',price:100,change:-2,volume24h:1000000000}] };
@@ -66,7 +67,7 @@ test('coin images escape URLs and stop after all fallback images fail',()=>{
 test('home lists query each board by creation time and include posts without recommendations',async()=>{
  const requests=[];const f=fixture(async url=>{requests.push(new URL(url));return Response.json([{id:'00000000-0000-0000-0000-000000000001',title:'<svg onload=alert(1)>추천 글',category:'분석',recommendation_count:12,profiles:{nickname:'회원'},comments:[{count:99}]}]);});configure(f);await f.run('loadPopular()');
  assert.equal(requests.length,5);assert.deepEqual(requests.map(u=>u.searchParams.get('category')),[null,'eq.자유','eq.분석','eq.소식','eq.질문']);for(const u of requests){assert.equal(u.searchParams.get('order'),'created_at.desc,id.desc');assert.equal(u.searchParams.has('recommendation_count'),false);assert.equal(u.searchParams.get('limit'),'5');assert.equal(u.searchParams.has('offset'),false);}
- assert.match(f.node('popularall').innerHTML,/추천 <b>12/);assert.doesNotMatch(f.node('popularall').innerHTML,/<svg/);
+ assert.match(f.node('popularall').innerHTML,/class="cell-votes"><b>12/);assert.doesNotMatch(f.node('popularall').innerHTML,/<svg/);
 });
 test('home latest lists remain usable when recommendation counts are unavailable',async()=>{
  const f=fixture(async url=>new URL(url).searchParams.get('select')?.includes('recommendation_count')?Response.json({message:'column posts.recommendation_count does not exist'},{status:400}):Response.json([{id:'00000000-0000-0000-0000-000000000001',title:'실제 최신 글',category:'자유',created_at:'2026-10-17T08:00:00Z'}]));configure(f);await f.run('loadPopular()');assert.match(f.node('popularall').innerHTML,/실제 최신 글/);assert.doesNotMatch(f.node('popularall').innerHTML,/NaN/);await f.run('loadPosts()');assert.match(f.node('posts').innerHTML,/실제 최신 글/);
@@ -237,4 +238,14 @@ test('market refresh is throttled, manual refresh bypasses it and idle/hidden ta
 test('attention sidebar and full ranking share one request and five-minute browser cache',async()=>{
  let calls=0;const f=fixture(async()=>{calls++;return Response.json({status:'ready',items:[]})});
  await Promise.all([f.run('fetchAttention(24)'),f.run('fetchAttention(24)')]);await f.run('fetchAttention(24)');assert.equal(calls,1);await f.run('fetchAttention(24,true)');assert.equal(calls,2);
+});
+
+test('market activity coalesces requests, keeps absent scores blank and safely renders live metrics',async()=>{
+ let count=0;const data={status:'collecting',count:100,upCount:40,strongCount:60,upPercent:40,strongPercent:60,btcChange:-2,baselineDays:0,parts:{volume:null,breadth:12,strength:18},score:null,asOf:new Date().toISOString(),source:'Binance',history:[]};
+ const f=fixture(async()=>{count++;return Response.json(data)});await Promise.all([f.run('loadMarketActivity()'),f.run('loadMarketActivity()')]);assert.equal(count,1);assert.match(f.node('marketactivity').innerHTML,/0\/7개 확보/);assert.doesNotMatch(f.node('activitysummary').innerHTML,/<strong>0/);assert.match(f.node('marketactivity').innerHTML,/40개/);await f.run('loadMarketActivity()');assert.equal(count,1);
+ f.run("renderMarketActivity({...activityData,score:72,dayChange:3,status:'ready',parts:{volume:30,breadth:21,strength:21},history:[{at:'2026-10-18T01:00Z',score:71},{at:'2026-10-18T02:00Z',score:72}]})");assert.match(f.node('marketactivity').innerHTML,/72.0/);assert.match(f.node('marketactivity').innerHTML,/\+3.0점/);assert.match(f.node('marketactivity').innerHTML,/<svg/);const path=f.node('marketactivity').innerHTML.match(/class="chart-line" d="([^"]+)"/)[1];assert.equal((path.match(/M/g)||[]).length,2);
+});
+test('community table uses column headers and independently links authors and posts',()=>{
+ const f=fixture(async()=>Response.json([]));const html=f.run(`communityTable([{id:'00000000-0000-0000-0000-000000000001',author_id:'00000000-0000-0000-0000-000000000002',title:'<b>제목</b>',category:'자유',profiles:{nickname:'사용자'},created_at:'2026-10-18T01:00Z',recommendation_count:7,ai_recommendation_count:2,view_count:20}])`);
+ assert.match(html,/<table class="community-table/);assert.match(html,/scope="col" class="cell-author">글쓴이/);assert.match(html,/&lt;b&gt;제목/);assert.doesNotMatch(html,/<b>제목/);assert.match(html,/AI 2/);assert.match(html,/followPost/);assert.match(html,/followMember/);
 });
