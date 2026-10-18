@@ -25,7 +25,7 @@ test('unconnected community never displays demo posts or fake login', async()=>{
 
 test('market failure after a successful response explicitly labels old data',async()=>{
   let fail=false;const f=fixture(async()=>{if(fail)throw new Error('network');return Response.json(market)});
-  await f.run("loadMarket('upbit')");assert.match(f.node('coins').innerHTML,/수이/);fail=true;await f.run("loadMarket('upbit')");assert.match(f.node('markettime').textContent,/이전 데이터/);assert.match(f.node('ticker').innerHTML,/갱신 지연/);
+  await f.run("loadMarket('upbit')");assert.match(f.node('coins').innerHTML,/수이/);fail=true;await f.run("loadMarket('upbit',{force:true})");assert.match(f.node('markettime').textContent,/이전 데이터/);assert.match(f.node('ticker').innerHTML,/갱신 지연/);
 });
 
 test('favorites persist and nonmatching search does not show fabricated results',async()=>{
@@ -85,7 +85,7 @@ test('spot market pagination reaches every coin and clamps after refreshed or fi
  const f=fixture(async()=>Response.json({...market,coins:rows}));await f.run("loadMarket('upbit')");assert.equal((f.node('coins').innerHTML.match(/<tr>/g)||[]).length,5);assert.match(f.node('marketpagination').innerHTML,/1–5 \/ 총 12개/);
  f.run('goMarketPage(1)');assert.match(f.node('coins').innerHTML,/<td class="rank">6<\/td>/);assert.doesNotMatch(f.node('coins').innerHTML,/>T0</);await f.run("loadMarket('upbit')");assert.equal(f.run('marketPage'),1);
  f.run('goMarketPage(2)');assert.equal((f.node('coins').innerHTML.match(/<tr>/g)||[]).length,2);assert.match(f.node('marketpagination').innerHTML,/11–12 \/ 총 12개/);
- rows=rows.slice(0,7);await f.run("loadMarket('upbit')");assert.equal(f.run('marketPage'),1);assert.match(f.node('marketpagination').innerHTML,/6–7 \/ 총 7개/);
+ rows=rows.slice(0,7);await f.run("loadMarket('upbit',{force:true})");assert.equal(f.run('marketPage'),1);assert.match(f.node('marketpagination').innerHTML,/6–7 \/ 총 7개/);
  f.run("query='검사코인0';renderCoins()");assert.equal(f.run('marketPage'),0);assert.match(f.node('marketpagination').innerHTML,/1–1 \/ 총 1개/);f.run("query='없는코인';renderCoins()");assert.equal(f.node('marketpagination').innerHTML,'');
 });
 
@@ -225,4 +225,16 @@ test('ranking timeframe changes discard late snapshots and pagination uses the g
  f.run("activeView='market';");const first=f.run('loadPageTechnicals()');await f.run("technicalInterval='4h';loadPageTechnicals()");release(Response.json({...snapshot,interval:'1h',items:[]}));await first;
  assert.match(f.node('technicalrows').innerHTML,/>T0</);assert.match(f.node('technicalpagination').innerHTML,/1–10 \/ 23개/);f.run('goTechnicalRankPage(2)');assert.match(f.node('technicalrows').innerHTML,/>T20</);assert.doesNotMatch(f.node('technicalrows').innerHTML,/>T0</);assert.match(f.node('technicalpagination').innerHTML,/21–23 \/ 23개/);
  assert.match(f.node('technicalrankstatus').textContent,/4시간봉/);assert.match(f.node('technicalrankstatus').textContent,/데이터 부족 1개/);
+});
+
+test('market refresh is throttled, manual refresh bypasses it and idle/hidden tabs do not poll',async()=>{
+ let marketCalls=0;const f=fixture(async()=>{marketCalls++;return Response.json(market)});
+ await f.run("loadMarket('upbit')");await f.run("loadMarket('upbit')");assert.equal(marketCalls,1);await f.run("loadMarket('upbit',{force:true})");assert.equal(marketCalls,2);
+ f.run("activeView='market';lastInteractionAt=Date.now()-300001;loadPageTechnicals=()=>{};refreshVisiblePage()");assert.equal(marketCalls,2);assert.match(f.node('autorefreshstatus').textContent,/일시정지/);
+ f.run("document.hidden=true;lastInteractionAt=Date.now();marketAttemptAt=0;refreshVisiblePage()");assert.equal(marketCalls,2);
+ f.run("document.hidden=false;lastInteractionAt=Date.now()-300001;registerInteraction()");await new Promise(r=>setImmediate(r));assert.equal(marketCalls,3);
+});
+test('attention sidebar and full ranking share one request and five-minute browser cache',async()=>{
+ let calls=0;const f=fixture(async()=>{calls++;return Response.json({status:'ready',items:[]})});
+ await Promise.all([f.run('fetchAttention(24)'),f.run('fetchAttention(24)')]);await f.run('fetchAttention(24)');assert.equal(calls,1);await f.run('fetchAttention(24,true)');assert.equal(calls,2);
 });

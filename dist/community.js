@@ -22,7 +22,7 @@ async function loadPopular(){
 }
 async function loadAttentionSummary(){
  const token=++summaryRequest;
- try{const {data}=await fetchJSON('/api/attention?hours=24');if(token!==summaryRequest)return;
+ try{const {data}=await fetchAttention(24);if(token!==summaryRequest)return;
  $('attentionsummary').innerHTML=(data.items||[]).slice(0,5).map((item,i)=>'<button class="summary-coin" onclick="navigate(\'rank\')"><span class="summary-rank">'+(i+1)+'</span>'+coinIcon(item.symbol)+'<span><b>'+escapeHTML(item.name)+'</b><small>'+escapeHTML(item.symbol)+'</small></span><strong>'+Number(item.mentions)+'건<small aria-label="최근 24시간 등락률">24h '+attentionChange(item.priceChange24h)+'</small></strong></button>').join('')||'<div class="summary-empty">아직 집계된 코인 언급이 없어요.<br>이야기가 쌓이면 관심도를 보여드려요.</div>';
  }catch{if(token===summaryRequest)$('attentionsummary').innerHTML='<p class="inline-status">관심도를 불러오지 못했어요.</p>';}
 }

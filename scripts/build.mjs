@@ -1,3 +1,5 @@
+import {createHash} from 'node:crypto';
+import path from 'node:path';
 import fs from 'node:fs/promises';
 import {renderPage,siteOrigin,verification,guides,guideCards,publisherId,escape} from '../lib/site-pages.mjs';
 let observability={};try{const input=JSON.parse(process.env.VERCEL_OBSERVABILITY_CLIENT_CONFIG||'{}');for(const key of ['analytics','speedInsights']){if(input[key]){observability[key]={};for(const field of ['scriptSrc','endpoint','eventEndpoint','viewEndpoint','sessionEndpoint']){const value=input[key][field];if(typeof value==='string'&&/^\/(?!\/)[A-Za-z0-9_/.~-]+$/.test(value))observability[key][field]=value;}}}}catch{}
@@ -20,10 +22,30 @@ home=home.replace(/<!-- SEO:START -->[\s\S]*?<!-- SEO:END -->/,'');
 const seo='<link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png"><link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png"><link rel="canonical" href="'+siteOrigin()+'/"><meta property="og:title" content="알트모아 — 알트코인 커뮤니티"><meta property="og:description" content="코인 이야기와 거래소 시세, 내부 관심도를 함께 보는 커뮤니티"><meta property="og:url" content="'+siteOrigin()+'/"><meta property="og:image" content="'+siteOrigin()+'/assets/altmoa-logo.png">'+verification();
 home=home.replace('</head>','<!-- SEO:START -->'+seo+'<!-- SEO:END --></head>');
 home=home.replace(/<!-- GUIDES:START -->[\s\S]*?<!-- GUIDES:END -->/,'');
-if(!home.includes('src="/telemetry.mjs"'))home=home.replace('</body>','<script type="module" src="/telemetry.mjs"></script></body>');
+if(!/src="\/telemetry\.mjs(?:\?[^"]*)?"/.test(home))home=home.replace('</body>','<script type="module" src="/telemetry.mjs"></script></body>');
 await fs.writeFile('dist/index.html',home);
 const urls=['/',...pages.filter(p=>!p.noindex).map(p=>p.path),'/community'];
 await fs.writeFile('dist/sitemap.xml','<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'+urls.map(path=>'<url><loc>'+escape(siteOrigin()+path)+'</loc></url>').join('')+'</urlset>');
 await fs.writeFile('dist/robots.txt','User-agent: *\nAllow: /\nDisallow: /api/\nSitemap: '+siteOrigin()+'/sitemap.xml\n');
 await fs.rm('dist/ads.txt',{force:true});const pub=publisherId();if(pub)await fs.writeFile('dist/ads.txt','google.com, '+pub.replace('ca-','')+', DIRECT, f08c47fec0942fa0\n');
 console.log('Built public guides, policies, SEO, sitemap and verification'+(pub?' with publisher ID.':'; no publisher ID or ads enabled.'));
+
+// Content versions allow browser reuse while HTML always points to current bytes.
+async function versionEntryAssets(dir){
+ for(const entry of await fs.readdir(dir,{withFileTypes:true})){
+  const file=path.join(dir,entry.name);
+  if(entry.isDirectory()){await versionEntryAssets(file);continue;}
+  if(!entry.name.endsWith('.html'))continue;
+  let html=await fs.readFile(file,'utf8');
+  const matches=[...html.matchAll(/(?:src|href)="(\/[A-Za-z0-9_/.~-]+\.(?:m?js|css))(?:\?v=[a-f0-9]+)?"/g)];
+  for(const match of matches){
+   const asset=path.resolve('dist','.'+match[1]);
+   if(!asset.startsWith(path.resolve('dist')+path.sep))continue;
+   let bytes;try{bytes=await fs.readFile(asset);}catch{continue;}
+   const version=createHash('sha256').update(bytes).digest('hex').slice(0,12);
+   html=html.replaceAll(match[0],match[0].slice(0,match[0].indexOf('="')+2)+match[1]+'?v='+version+'"');
+  }
+  await fs.writeFile(file,html);
+ }
+}
+await versionEntryAssets('dist');

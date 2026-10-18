@@ -7,6 +7,8 @@ let config = null, session = read('altmoa-session', null, sessionStorage), refre
 let coins = [], posts = [], favorites = read('altmoa-stars', []), sort = 'volume', sortDirection='desc', query = '', category = '전체', coinFilter = '', savedOnly = false;
 let page = 0, total = 0, feedRequest = 0, marketBusy = false, activePostId = null, moderator = false;
 let lastFetchedAt = null, marketFailed = false, marketPage = 0;
+const MARKET_REFRESH_MS=180000,IDLE_REFRESH_MS=300000;
+let marketAttemptAt=0,marketAttemptExchange=null,lastInteractionAt=Date.now(),homeRefreshAt=0;
 const MARKET_PAGE_SIZE=5;
 let displayCurrency=read('altmoa-display-currency','USDT');
 if(!['KRW','USDT'].includes(displayCurrency))displayCurrency='USDT';
@@ -127,13 +129,19 @@ function passwordModal() {
 }
 function attentionChange(value){return Number.isFinite(value)?'<span class="'+(value>0?'up':value<0?'down':'')+'">'+(value>0?'+':'')+value.toFixed(2)+'%</span>':'<span class="subtle">—</span>';}
 let attentionRequest = 0, attentionRows = [];
+const attentionCache=new Map(),attentionPending=new Map();
+async function fetchAttention(hours,force=false){
+ const key=String(hours),cached=attentionCache.get(key);if(!force&&cached&&Date.now()-cached.at<300000)return {data:cached.data};
+ if(attentionPending.has(key))return attentionPending.get(key);
+ const task=fetchJSON('/api/attention?'+new URLSearchParams({hours:key})).then(result=>{if(['ready','collecting'].includes(result.data.status))attentionCache.set(key,{data:result.data,at:Date.now()});return result;}).finally(()=>attentionPending.delete(key));attentionPending.set(key,task);return task;
+}
 const attentionStatus = {permission_required:'동의 필요',api_required:'API 연결 필요',collecting:'수집 중',paused:'일시 중지',error:'연결 오류',partial:'일부 수집',stale:'갱신 지연',not_connected:'미연결'};
-async function loadAttention() {
+async function loadAttention(force=false) {
  const requestId=++attentionRequest;
  attentionRows=[]; $('attentioncontent').className='connection'; $('attentioncontent').textContent='관심도를 불러오는 중입니다.';
  const params=new URLSearchParams({hours:$('attentionperiod').value});
  try {
-  const {data}=await fetchJSON('/api/attention?'+params);if(requestId!==attentionRequest)return;
+  const {data}=await fetchAttention(params.get('hours'),force===true);if(requestId!==attentionRequest)return;
   attentionRows=data.items||[];
   $('attentionbadge').textContent='내부 통합 집계';
   $('attentioncontent').className=attentionRows.length?'tablebox':'connection';
@@ -152,11 +160,13 @@ function attentionDetail(symbol){
  }).join('');
  modal('<div class="eyebrow">'+'ALTMOA COMMUNITY'+'</div><h2 class="coin-detail-heading">'+coinIcon(symbol)+escapeHTML(item.name)+' <span class="subtle">'+escapeHTML(symbol)+'</span></h2><p>24시간 등락률 '+attentionChange(item.priceChange24h)+' <small class="subtle">바이낸스 현물 USDT</small></p><p>선택한 기간에 '+Number(item.mentions)+'개의 중복 제외 언급 글이 관측됐어요.</p><p class="subtle">'+'내부 게시글의 언급 수이며, 댓글과 추천 수는 포함하지 않습니다.'+'</p><ul class="attention-links">'+links+'</ul>');
 }
-async function loadMarket(exchange=selectedExchange) {
+async function loadMarket(exchange=selectedExchange,{force=false}={}) {
   loadPageTechnicals();
   if(!exchangeOptions.some(e=>e[0]===exchange))return;
   document.querySelectorAll('[data-exchange]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.exchange===exchange)));
   if(marketBusy&&loadingExchange===exchange)return;
+  if(!force&&marketAttemptExchange===exchange&&Date.now()-marketAttemptAt<MARKET_REFRESH_MS){if(coins.length)renderCoins();return;}
+  marketAttemptAt=Date.now();marketAttemptExchange=exchange;
   const requestId=++marketRequest;marketBusy=true;loadingExchange=exchange;
   if(selectedExchange!==exchange){selectedExchange=exchange;marketPage=0;$('marketpagination').innerHTML='';coins=[];lastFetchedAt=null;marketFailed=false;$('coins').innerHTML='<tr><td colspan="6" class="loading">선택한 거래소 시세를 불러오고 있어요.</td></tr>';$('ticker').innerHTML='<span class="inline-status">시세 연결 중...</span>';$('marketbadge').textContent='연결 중';$('markettime').textContent='연결 중';}
   try {
@@ -167,7 +177,7 @@ async function loadMarket(exchange=selectedExchange) {
     marketInfo={id:exchange,name:data.name||meta[1],quote:data.currency||meta[3],source:data.source||exchange,changeLabel:data.changeLabel||'전일 종가 대비 (UTC)'};
     $('marketbadge').textContent=marketInfo.source.toUpperCase();$('marketdescription').textContent=marketInfo.name+' · '+marketInfo.quote+' 현물 · 5개씩 보기';
     $('changebasis').textContent=marketInfo.changeLabel;$('changehead').textContent=marketInfo.quote==='USDT'?'24h 등락률':'전일 대비';
-    $('markettime').textContent=marketInfo.name+' · '+time(data.fetchedAt)+' KST 조회 · 60초마다 갱신';
+    $('markettime').textContent=marketInfo.name+' · '+time(data.fetchedAt)+' KST 조회 · 3분마다 갱신';
     $('globalstatus').textContent='함께 나누는 알트코인 커뮤니티';
     renderMarketTicker();
     renderCoins();
@@ -296,7 +306,7 @@ function writePost(options={}) {
       uploaded=await uploadComposerImages(authorId);if(session?.user?.id!==authorId)throw Error('로그인 계정이 변경되었습니다. 다시 로그인해 주세요.');
       const { data } = await db('posts', { method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ author_id: authorId, category: board, tags, images:uploaded,poll_question:question||null,poll_options:options, title, body }) });saved=true;rememberPostCooldown(authorId);
       composerImages.forEach(image=>URL.revokeObjectURL(image.preview));composerImages=[];
-      postSubmitting=false;category = form.get('category'); coinFilter = ''; query = ''; $('search').value = ''; page = 0; navigate('board',{category}); toast('게시글을 등록했어요.'); loadAttention(); if(data[0])await openPost(data[0].id);
+      postSubmitting=false;category = form.get('category'); coinFilter = ''; query = ''; $('search').value = ''; page = 0; navigate('board',{category}); toast('게시글을 등록했어요.'); loadAttention(true); if(data[0])await openPost(data[0].id);
     } catch (error) { if(/60초/.test(error.message||''))rememberPostCooldown(authorId);if(!saved&&error.status)await deleteUploadedPhotos(uploaded);if ($('writeerror')) $('writeerror').textContent = /태그|투표|사진|선택지|제목|계정/.test(error.message)?error.message:errorMessage(error); }
     finally { postSubmitting=false;if (button.isConnected)watchPostCooldown(); }
   };
@@ -315,7 +325,7 @@ async function editPost(id){
    const form=new FormData(event.target),title=String(form.get('title')||'').trim(),body=String(form.get('body')||'').trim();
    if(title.length<2||title.length>100||body.length<2||body.length>10000){$('editposterror').textContent='제목은 2~100자, 본문은 2~10000자로 입력하세요.';return;}
    busy=true;const button=$('editpostsave');button.disabled=true;
-   try{const {data}=await db('rpc/moderator_edit_post',{method:'POST',body:JSON.stringify({p_id:id,p_title:title,p_body:body})});if(data!==id)throw Error('수정 권한이 없거나 게시글이 삭제되었습니다.');$('dialog').close();toast('글을 수정했어요.');if(activePostId===id)await openPost(id,{history:false});loadPosts();loadAttention();}
+   try{const {data}=await db('rpc/moderator_edit_post',{method:'POST',body:JSON.stringify({p_id:id,p_title:title,p_body:body})});if(data!==id)throw Error('수정 권한이 없거나 게시글이 삭제되었습니다.');$('dialog').close();toast('글을 수정했어요.');if(activePostId===id)await openPost(id,{history:false});loadPosts();loadAttention(true);}
    catch(error){if($('editposterror'))$('editposterror').textContent=errorMessage(error);}
    finally{busy=false;if(button.isConnected)button.disabled=false;}
   };
@@ -347,6 +357,16 @@ async function showReports() {
 }
 function lounge(symbol){coinFilter=symbol;category='전체';query='';$('search').value='';page=0;navigate('board',{category:'전체'});}
 function showSaved(){query='';$('search').value='';navigate('saved');}
+function refreshVisiblePage(){
+ if(document.hidden)return;
+ const idle=Date.now()-lastInteractionAt>=IDLE_REFRESH_MS;
+ if($('autorefreshstatus'))$('autorefreshstatus').textContent=idle?'5분 미사용 · 자동 갱신 일시정지 · 화면을 조작하면 다시 시작합니다.':'시세 3분 · 관심도 5분 갱신 · 5분 미사용 시 자동 갱신 일시정지';
+ if(idle)return;
+ if(['market','saved'].includes(activeView))loadMarket();
+ if(activeView==='rank')loadAttention();
+ if(activeView==='home'&&Date.now()-homeRefreshAt>=180000){homeRefreshAt=Date.now();loadPopular();loadAttentionSummary();}
+}
+function registerInteraction(){const resume=Date.now()-lastInteractionAt>=IDLE_REFRESH_MS;lastInteractionAt=Date.now();if(resume)refreshVisiblePage();}
 async function init() {
   renderPopularShell(); updateAuth(); restoreCommunityRoute();
   if(activeView!=='home')loadAttentionSummary();
@@ -363,8 +383,9 @@ async function init() {
   if (read('altmoa-dark', false)) document.body.classList.add('dark');
 
   $('dialog').addEventListener('click', event => { if (event.target === $('dialog')) { const r = $('dialog').getBoundingClientRect(); if (event.clientX < r.left || event.clientX > r.right || event.clientY < r.top || event.clientY > r.bottom) $('dialog').close(); } });
-  setInterval(()=>{if(!document.hidden){if(['market','saved'].includes(activeView))loadMarket();if(activeView==='rank')loadAttention();if(activeView==='home'){loadPopular();loadAttentionSummary();}}},60000);
-  document.addEventListener('visibilitychange', () => { if (['market','saved'].includes(activeView) && !document.hidden && (!lastFetchedAt || Date.now() - new Date(lastFetchedAt).getTime() > 60000)) loadMarket(); });
+  setInterval(refreshVisiblePage,60000);
+  for(const event of ['pointerdown','keydown','scroll','touchstart'])document.addEventListener(event,registerInteraction,{passive:true,capture:event==='scroll'});
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden){lastInteractionAt=Date.now();refreshVisiblePage();}});
   try {
     config = (await fetchJSON('/api/config')).data;
     $('connectionstatus').textContent = config.communityReady ? '회원·게시판 연결됨' : '회원·게시판 준비 중';
@@ -422,7 +443,7 @@ function renderTechnicalRanking(){
  const data=technicalRankData;if(!data||data.interval!==technicalInterval)return;
  const pages=Math.max(1,Math.ceil(data.items.length/TECHNICAL_PAGE_SIZE));technicalRankPage=Math.min(Math.max(0,technicalRankPage),pages-1);const offset=technicalRankPage*TECHNICAL_PAGE_SIZE;
  $('technicalrankstatus').textContent=(data.stale?'갱신 지연 · 이전 집계 · ':'')+technicalIntervals[data.interval]+' · '+data.items.length+'개 평가 / 전체 '+Number(data.totalUniverse)+'개 · 데이터 부족 '+Number(data.insufficient)+'개 · 조회 실패 '+Number(data.failed)+'개 · 기준 '+time(data.asOf)+' KST · 약 5분 캐시';
- $('technicalrows').innerHTML=data.items.slice(offset,offset+TECHNICAL_PAGE_SIZE).map((c,i)=>'<article class="technical-card"><button class="technical-coin-button" onclick="openTechnicalRankCoin(\''+c.symbol+'\')"><span class="summary-rank">'+(offset+i+1)+'</span>'+coinIcon(c.symbol,c.symbol,c.logoUrl)+'<span><b>'+escapeHTML(c.symbol)+'</b><small>'+escapeHTML(c.name)+'</small></span><strong>'+Number(c.scoring.total).toFixed(1)+'<small>/ 100점</small></strong></button>'+technicalStats(c)+'<small class="technical-score-parts">추세 '+c.scoring.trend+'/50 · RSI '+c.scoring.rsi+'/30 · 거래량 '+c.scoring.volume+'/20</small></article>').join('')||'<p class="subtle">현재 기준으로 점수를 계산할 수 있는 코인이 없습니다.</p>';
+ $('technicalrows').innerHTML=data.items.slice(offset,offset+TECHNICAL_PAGE_SIZE).map((c,i)=>'<article class="technical-card"><button class="technical-coin-button" onclick="openTechnicalRankCoin(\''+c.symbol+'\')"><span class="summary-rank">'+(offset+i+1)+'</span>'+coinIcon(c.symbol,c.symbol,c.logoUrl)+'<span class="technical-coin-copy"><b>'+escapeHTML(c.symbol)+'</b><small>'+escapeHTML(c.name)+'</small></span><strong>'+Number(c.scoring.total).toFixed(1)+'<small>/ 100점</small></strong></button>'+technicalStats(c)+'<small class="technical-score-parts">추세 '+c.scoring.trend+'/50 · RSI '+c.scoring.rsi+'/30 · 거래량 '+c.scoring.volume+'/20</small></article>').join('')||'<p class="subtle">현재 기준으로 점수를 계산할 수 있는 코인이 없습니다.</p>';
  const start=Math.max(0,Math.min(technicalRankPage-2,pages-5));
  $('technicalpagination').innerHTML=data.items.length?'<span>'+(offset+1)+'–'+Math.min(offset+TECHNICAL_PAGE_SIZE,data.items.length)+' / '+data.items.length+'개</span><div class="market-page-buttons"><button onclick="goTechnicalRankPage('+(technicalRankPage-1)+')"'+(technicalRankPage===0?' disabled':'')+'>← 이전</button>'+Array.from({length:Math.min(5,pages)},(_,i)=>start+i).map(index=>'<button onclick="goTechnicalRankPage('+index+')"'+(index===technicalRankPage?' class="on" aria-current="page"':'')+'>'+(index+1)+'</button>').join('')+'<button onclick="goTechnicalRankPage('+(technicalRankPage+1)+')"'+(technicalRankPage===pages-1?' disabled':'')+'>다음 →</button></div>':'';
 }

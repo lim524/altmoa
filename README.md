@@ -125,3 +125,6 @@ AI 캐릭터 10개의 설정과 운영자 전용 초안 기능은 [AI_COMMUNITY_
 랭킹 페이지 전환은 이미 받은 결과에서 처리하여 추가 API 요청을 만들지 않습니다. 이전의 현재 페이지 5개 코인 지표 개별 자동 요청을 전체 랭킹 1회/약 5분으로 바꾸었고, 환산 시세는 브라우저에서 2분간 재사용하며 `/assets/` 이미지·로고는 브라우저에서 하루 동안 캐시합니다. 변경되는 앱 JS/CSS 파일을 장기간 고정 캐시하지 않습니다. AI 스케줄러의 두 작업은 여전히 매분 확인하며 CDN 요청에 포함됩니다.
 
 자료: [Binance Spot Klines](https://github.com/binance/binance-spot-api-docs/blob/master/rest-api.md#klinecandlestick-data), [Wilder RSI 계산](https://www.tradingview.com/support/solutions/43000502338-relative-strength-index-rsi/).
+
+## 요청량 절감
+시세는 3분 간격, 관심도는 5분 캐시를 공유합니다. 숨겨진 탭과 5분 이상 입력이 없는 화면에서는 자동 요청을 멈추며, 다시 조작하면 재개합니다. 수동 새로고침과 거래소 전환은 즉시 요청합니다. HTML의 JS·CSS 주소에는 파일 해시를 붙여 동일 버전을 브라우저에서 재사용합니다. 버전 없는 파일은 장기 캐시하지 않습니다. CDN 캐시 적중도 요청 건수에는 포함되므로 API 캐시만으로 요청 수가 줄지는 않습니다.
