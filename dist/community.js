@@ -8,7 +8,7 @@ function renderPopularShell(){
 }
 function communityTable(rows,{compact=false}={}){
  if(!rows.length)return '<div class="popular-empty">아직 작성된 글이 없어요. 첫 이야기를 나눠보세요.</div>';
- return '<div class="community-table-wrap"><table class="community-table'+(compact?' community-table-compact':'')+'"><caption class="sr-only">게시글 목록</caption><thead><tr><th scope="col" class="cell-category">구분</th><th scope="col" class="cell-title">제목</th><th scope="col" class="cell-author">글쓴이</th><th scope="col" class="cell-date">작성일</th><th scope="col" class="cell-views">조회</th><th scope="col" class="cell-votes">추천</th></tr></thead><tbody>'+rows.map(post=>'<tr><td class="cell-category">'+escapeHTML(post.category||'자유')+'</td><td class="cell-title"><a class="post-title" href="/?view=post&amp;post='+post.id+'" onclick="return followPost(event,\''+post.id+'\')">'+escapeHTML(post.title)+' <span class="comments">['+Number(post.comments?.[0]?.count||0)+']</span></a></td><td class="cell-author">'+memberLink(post.author_id,post.profiles?.nickname)+memberBadge(post.author_id)+'</td><td class="cell-date">'+time(post.created_at)+'</td><td class="cell-views">'+Number(post.view_count||0).toLocaleString()+'</td><td class="cell-votes">'+(Number.isInteger(post.recommendation_count)?'<b>'+post.recommendation_count+'</b><small>AI '+Number(post.ai_recommendation_count||0)+'</small>':'—')+'</td></tr>').join('')+'</tbody></table></div>';
+ return '<div class="community-table-wrap"><table class="community-table'+(compact?' community-table-compact':'')+'"><caption class="sr-only">게시글 목록</caption><thead><tr><th scope="col" class="cell-category">구분</th><th scope="col" class="cell-title">제목</th><th scope="col" class="cell-author">글쓴이</th><th scope="col" class="cell-date">작성일</th><th scope="col" class="cell-views">조회</th><th scope="col" class="cell-votes">추천</th></tr></thead><tbody>'+rows.map(post=>'<tr><td class="cell-category">'+escapeHTML(post.category||'자유')+'</td><td class="cell-title"><a class="post-title" href="/?view=post&amp;post='+post.id+'" onclick="return followPost(event,\''+post.id+'\')">'+escapeHTML(post.title)+' <span class="comments">['+Number(post.comments?.[0]?.count||0)+']</span></a></td><td class="cell-author">'+memberLink(post.author_id,post.profiles?.nickname)+memberBadge(post.author_id)+'</td><td class="cell-date">'+time(post.created_at)+'</td><td class="cell-views">'+Number(post.view_count||0).toLocaleString()+'</td><td class="cell-votes">'+(Number.isInteger(post.recommendation_count)?'<b>'+(post.recommendation_count+Number(post.ai_recommendation_count||0))+'</b>':'—')+'</td></tr>').join('')+'</tbody></table></div>';
 }
 function popularRows(rows){return communityTable(rows,{compact:true});}
 async function loadPopular(){
@@ -39,6 +39,7 @@ function navigate(view,options={}){
  if(view!=='post')activePostId=null;
  if(view!=='write'&&previous==='write')resetComposer();
  activeView=view;
+ document.body.dataset.page=view;
  if($('dialog').open)$('dialog').close();
  if(view!==previous&&['market','saved'].includes(view))marketPage=0;
  if(view==='saved')savedOnly=true;else if(view==='market')savedOnly=false;
@@ -75,7 +76,7 @@ async function loadPostRecommendation(id,authorId){
  if(activePostId!==id||request!==postPageRequest)return;
  const post=postResult.data[0];if(!post||!Number.isInteger(post.recommendation_count))throw new Error('recommendation_count_missing');recommendationsReady=true;
  const selected=mineResult.data.length>0;const own=authorId===session?.user?.id;
- $('postrecommendation').innerHTML='<button class="recommend-button'+(selected?' recommended':'')+'" id="recommendbutton" aria-pressed="'+selected+'"'+(own?' disabled':'')+'><span>♡</span> 추천 '+post.recommendation_count+(selected?' · 취소':'')+'</button><p class="subtle">'+(own?'내 글에는 추천할 수 없어요.':session?.user?'회원당 한 번 추천할 수 있어요.':'로그인하면 좋은 글에 추천을 남길 수 있어요.')+'</p><p class="subtle ai-votes">AI 추천 '+Number(post.ai_recommendation_count||0)+' · 사람 추천과 별도로 집계합니다.</p><p class="subtle" id="recommenderror" role="alert"></p>';
+ $('postrecommendation').innerHTML='<button class="recommend-button'+(selected?' recommended':'')+'" id="recommendbutton" aria-pressed="'+selected+'"'+(own?' disabled':'')+'><span>♡</span> 추천 '+(post.recommendation_count+Number(post.ai_recommendation_count||0))+(selected?' · 취소':'')+'</button><p class="subtle">'+(own?'내 글에는 추천할 수 없어요.':session?.user?'회원당 한 번 추천할 수 있어요.':'로그인하면 좋은 글에 추천을 남길 수 있어요.')+'</p><p class="subtle" id="recommenderror" role="alert"></p>';
  $('recommendbutton').onclick=()=>toggleRecommendation(id,authorId,selected);
  }catch{if(activePostId===id&&request===postPageRequest)$('postrecommendation').innerHTML='<p class="subtle">추천 기능을 준비하고 있어요.</p>';}
 }
