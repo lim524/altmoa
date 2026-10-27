@@ -12,6 +12,9 @@ import {publicCommunity} from '../lib/public-community.mjs';
 import { EXCHANGES,fetchExchange,compareAsset,fetchConversion } from '../lib/exchanges.mjs';
 import {aiConfiguration,createAIDraft} from '../lib/ai-drafts.mjs';
 import { getAttention } from '../lib/attention-api.mjs';
+// Owner-requested pause. Resume only with an explicit AI_FEATURES_PAUSED=false.
+const aiPaused=()=>process.env.AI_FEATURES_PAUSED!=='false';
+const pausedAI=()=>json({paused:true,enabled:false,published:false,replied:false,recommended:false,reason:'ai_paused'});
 const json = (body, status = 200, cache = 'no-store') => Response.json(body, { status, headers: { 'Cache-Control': cache, 'X-Content-Type-Options': 'nosniff' } });
 export async function GET(request) {
   const u = new URL(request.url);
@@ -28,8 +31,9 @@ export async function GET(request) {
     return json({ communityReady: ready, supabaseUrl: ready ? url : '', supabaseKey: ready ? key : '' });
   }
   if(route==='public-community'||route==='public-post')return publicCommunity(u,route==='public-post');
+  if(route==='ai-enrichment'&&aiPaused())return pausedAI();
   if(route==='ai-enrichment'){try{const rows=await aiAdmin('rest/v1/ai_enrichment_cache?select=snapshot,computed_at&id=eq.1'),r=rows?.[0],s=r?.snapshot;return json({enabled:process.env.AI_ENRICHMENT_ENABLED!=='false',updatedAt:r?.computed_at||null,terms:s?.terms?.length||0,observedTerms:s?.terms?.filter(t=>t.kind==='observed').length||0,images:s?.images?.length||0,sources:s?.sources||[],learner:s?.learner||'waiting'},200,'public, max-age=0, s-maxage=60');}catch{return json({status:'preparing'},503);}}
-  if(route==='ai')return json(aiConfiguration());
+  if(route==='ai'){const data=aiConfiguration();return json(aiPaused()?{...data,paused:true,enabled:false,webSearch:false,publishing:{...data.publishing,enabled:false,automaticComments:false,automaticRecommendations:false}}:data);}
   if(route==='technical-rank'){try{const data=await getTechnicalRanking(u);return json(data,data.status==='building'?202:200,data.status==='ready'&&!data.stale?'public, max-age=0, s-maxage=30':'no-store');}catch(error){return json({error:error.status===400?'올바른 봉 주기를 선택해 주세요.':'기술지표 랭킹을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.'},error.status||503);}}
   if(route==='technical'){try{return json(await getTechnical(u),200,'public, max-age=0, s-maxage=60');}catch(error){return json({error:error.status===400?'올바른 코인과 봉 주기를 선택해 주세요.':'차트 지표를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.'},error.status||502);}}
   if(route==='market-activity'){try{const data=await getMarketActivity();return json(data,data.status==='building'?202:200,data.stale||data.status==='building'?'no-store':'public, max-age=0, s-maxage=60');}catch{return json({error:'시장 활성도를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.'},503);}}
@@ -52,4 +56,4 @@ export async function GET(request) {
   }
 }
 
-export async function POST(request){const url=new URL(request.url),route=url.searchParams.get('route')||url.pathname.replace(/^\/api\/?/,'');if(route==='auth-session')return authSession(request);if(route==='ai-enrichment'){if(!authorized(request))return json({error:'Unauthorized'},401);return json(await refreshCommunityEnrichment(aiAdmin));}if(route==='ai-tick')return runAITick(request);if(route==='post-view')return recordHumanView(request);if(route==='ai-reply')return runAIReplies(request);if(route==='ai-initialize')return initializeAIWriters(request);if(route==='ai-publish')return runAIPublisher(request);if(route==='ai')return createAIDraft(request);return json({error:'Not found'},404);}
+export async function POST(request){const url=new URL(request.url),route=url.searchParams.get('route')||url.pathname.replace(/^\/api\/?/,'');if((route==='ai'||route.startsWith('ai-'))&&aiPaused())return pausedAI();if(route==='auth-session')return authSession(request);if(route==='ai-enrichment'){if(!authorized(request))return json({error:'Unauthorized'},401);return json(await refreshCommunityEnrichment(aiAdmin));}if(route==='ai-tick')return runAITick(request);if(route==='post-view')return recordHumanView(request);if(route==='ai-reply')return runAIReplies(request);if(route==='ai-initialize')return initializeAIWriters(request);if(route==='ai-publish')return runAIPublisher(request);if(route==='ai')return createAIDraft(request);return json({error:'Not found'},404);}
